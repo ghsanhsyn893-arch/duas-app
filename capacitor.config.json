@@ -1,0 +1,15 @@
+{
+  "appId": "com.duas.app",
+  "appName": "أدعية وزيارات",
+  "webDir": "www",
+  "backgroundColor": "#0f3d2e",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_dua",
+      "iconColor": "#1B6A4F"
+    }
+  }
+}
