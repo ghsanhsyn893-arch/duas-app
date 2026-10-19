@@ -1,9 +1,29 @@
 (function () {
   "use strict";
 
+  var REMOTE_URL = "https://raw.githubusercontent.com/ghsanhsyn893-arch/duas-app/main/data.json";
   var DATA = window.DATA;
   var ITEMS = DATA.items;
   var CATS = DATA.categories;
+  var BOOKS = DATA.books || [];
+  var VERSION = DATA.version || 1;
+
+  function validData(d) {
+    if (!d || typeof d.version !== "number" || !d.items || !Array.isArray(d.categories)) return false;
+    return d.categories.every(function (c) {
+      return c && c.id && Array.isArray(c.keys) && c.keys.every(function (k) {
+        return d.items[k] && typeof d.items[k].text === "string";
+      });
+    });
+  }
+  function applyData(d) {
+    DATA = d; ITEMS = d.items; CATS = d.categories; BOOKS = d.books || []; VERSION = d.version;
+  }
+  // آخر نسخة محفوظة من الإنترنت (إن كانت أحدث من المدمجة)
+  try {
+    var cached = JSON.parse(localStorage.getItem("remoteData") || "null");
+    if (validData(cached) && cached.version > VERSION) applyData(cached);
+  } catch (e) {}
 
   /* ---------------- تخزين الإعدادات ---------------- */
   var DEFAULTS = {
@@ -66,10 +86,19 @@
       .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
       .toLowerCase();
   }
-  var INDEX = {};
-  Object.keys(ITEMS).forEach(function (k) {
-    INDEX[k] = norm(ITEMS[k].title + " " + ITEMS[k].text);
-  });
+  var INDEX = {}, BINDEX = [];
+  function buildIndex() {
+    INDEX = {}; BINDEX = [];
+    Object.keys(ITEMS).forEach(function (k) {
+      INDEX[k] = norm(ITEMS[k].title + " " + ITEMS[k].text);
+    });
+    BOOKS.forEach(function (b) {
+      b.chapters.forEach(function (c, i) {
+        BINDEX.push({ id: b.id, i: i, book: b.title, title: c.title, n: norm(c.title + " " + c.text) });
+      });
+    });
+  }
+  buildIndex();
 
   function applyTheme() {
     var t = cfg.theme;
@@ -101,9 +130,16 @@
   var stack = [{ type: "home" }];
   var query = "";
 
-  function go(v) { stack.push(v); render(); window.scrollTo(0, 0); }
+  function go(v) {
+    if (stack[stack.length - 1].type === "book") savePos();
+    stack.push(v); render(); window.scrollTo(0, 0);
+  }
   function goBack() {
-    if (stack.length > 1) { stack.pop(); render(); return true; }
+    if (sheetEl) { closeSheet(); return true; }
+    if (stack.length > 1) {
+      if (stack[stack.length - 1].type === "book") savePos();
+      stack.pop(); render(); return true;
+    }
     return false;
   }
 
@@ -115,6 +151,8 @@
     else if (v.type === "cat") renderCat(v);
     else if (v.type === "item") renderItem(v);
     else if (v.type === "settings") renderSettings();
+    else if (v.type === "lib") renderLib();
+    else if (v.type === "book") renderBook(v);
   }
 
   /* ---------------- الرئيسية ---------------- */
@@ -135,11 +173,28 @@
       var q = norm(query.trim());
       if (q) {
         var keys = Object.keys(ITEMS).filter(function (k) { return INDEX[k].indexOf(q) !== -1; });
-        if (!keys.length) { box.appendChild(el("div", "empty", "ما لقينا نتيجة")); return; }
+        var bh = BINDEX.filter(function (x) { return x.n.indexOf(q) !== -1; }).slice(0, 30);
+        if (!keys.length && !bh.length) { box.appendChild(el("div", "empty", "ما لقينا نتيجة")); return; }
         var list = el("div", "list");
         keys.forEach(function (k) { list.appendChild(itemRow(k)); });
+        bh.forEach(function (x) {
+          var b = el("button", "row");
+          b.appendChild(el("span", null, "📚 " + x.book + " — " + x.title));
+          b.appendChild(el("span", "chev", "‹"));
+          b.onclick = function () { go({ type: "book", id: x.id, jump: x.i }); };
+          list.appendChild(b);
+        });
         box.appendChild(list);
         return;
+      }
+      var last = lastRead();
+      if (last) {
+        var rb = el("button", "resume");
+        rb.appendChild(el("span", "rt", "📖 تابع القراءة"));
+        rb.appendChild(el("span", "rn", last.book.title));
+        rb.appendChild(el("span", "rp", last.chTitle + (last.pct ? " — " + last.pct + "%" : "")));
+        rb.onclick = function () { go({ type: "book", id: last.book.id }); };
+        box.appendChild(rb);
       }
       box.appendChild(el("div", "hello", "اختر القسم"));
       var grid = el("div", "grid");
@@ -151,6 +206,14 @@
         b.onclick = function () { go({ type: "cat", id: c.id }); };
         grid.appendChild(b);
       });
+      if (BOOKS.length) {
+        var lb = el("button", "cat wide");
+        lb.appendChild(el("span", "ic", "📚"));
+        lb.appendChild(el("span", "nm", "المكتبة"));
+        lb.appendChild(el("span", "ct", BOOKS.length + " كتاب"));
+        lb.onclick = function () { go({ type: "lib" }); };
+        grid.appendChild(lb);
+      }
       box.appendChild(grid);
     }
     search.addEventListener("input", function () { query = search.value; draw(); });
@@ -200,6 +263,197 @@
     if (it.source) paper.appendChild(el("div", "source", "📚 المصدر: " + it.source));
     viewEl.appendChild(paper);
   }
+
+
+  /* ---------------- المكتبة ---------------- */
+  function getPos(id) {
+    try { return JSON.parse(localStorage.getItem("pos:" + id) || "null"); } catch (e) { return null; }
+  }
+  function setPos(id, p) {
+    try { localStorage.setItem("pos:" + id, JSON.stringify(p)); } catch (e) {}
+  }
+  function getBm(id) {
+    try { var a = JSON.parse(localStorage.getItem("bm:" + id) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  }
+  function setBm(id, a) {
+    try { localStorage.setItem("bm:" + id, JSON.stringify(a)); } catch (e) {}
+  }
+  function findBook(id) { return BOOKS.filter(function (b) { return b.id === id; })[0]; }
+
+  // آخر كتاب مقروء (لبطاقة "تابع القراءة")
+  function lastRead() {
+    var best = null;
+    BOOKS.forEach(function (b) {
+      var p = getPos(b.id);
+      if (p && (!best || p.t > best.p.t)) best = { book: b, p: p };
+    });
+    if (!best) return null;
+    var i = Math.min(best.p.ch || 0, best.book.chapters.length - 1);
+    return { book: best.book, chTitle: best.book.chapters[i].title, pct: best.p.pct || 0 };
+  }
+
+  function renderLib() {
+    titleEl.textContent = "📚 المكتبة";
+    var list = el("div", "list");
+    BOOKS.forEach(function (b) {
+      var btn = el("button", "row book");
+      var box = el("span", "bk");
+      box.appendChild(el("span", "bt", b.title));
+      box.appendChild(el("span", "ba", b.author));
+      var p = getPos(b.id);
+      if (p && p.pct) box.appendChild(el("span", "bp", "تمت قراءة " + p.pct + "%"));
+      btn.appendChild(box);
+      btn.appendChild(el("span", "chev", "‹"));
+      btn.onclick = function () { go({ type: "book", id: b.id }); };
+      list.appendChild(btn);
+    });
+    if (!BOOKS.length) list.appendChild(el("div", "empty", "لا توجد كتب بعد"));
+    viewEl.appendChild(list);
+  }
+
+  var sheetEl = null, scrollTimer = null, restoring = false, curBook = null;
+
+  function barH() {
+    var b = $("bar"), t = viewEl.querySelector(".reader-tools.sticky");
+    return (b ? b.offsetHeight : 0) + (t ? t.offsetHeight : 0);
+  }
+
+  function chapEls() { return viewEl.querySelectorAll(".chap"); }
+
+  function currentPos() {
+    var chs = chapEls(), h = barH() + 12, idx = 0, r = 0;
+    for (var i = 0; i < chs.length; i++) {
+      var rc = chs[i].getBoundingClientRect();
+      if (rc.top <= h) { idx = i; r = rc.height ? Math.max(0, Math.min(1, (h - rc.top) / rc.height)) : 0; }
+      else break;
+    }
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    var pct = max > 0 ? Math.round(100 * (window.pageYOffset || 0) / max) : 0;
+    return { ch: idx, r: r, pct: Math.max(0, Math.min(100, pct)), t: Date.now() };
+  }
+
+  function savePos() {
+    if (!curBook || restoring) return;
+    var top = stack[stack.length - 1];
+    if (!top || top.type !== "book") return;
+    setPos(curBook.id, currentPos());
+  }
+
+  function restoreTo(i, r) {
+    var chs = chapEls();
+    if (!chs.length) return;
+    i = Math.max(0, Math.min(chs.length - 1, i));
+    restoring = true;
+    function doIt() {
+      var rc = chs[i].getBoundingClientRect();
+      var y = (window.pageYOffset || 0) + rc.top + (r || 0) * rc.height - barH() - 8;
+      window.scrollTo(0, Math.max(0, y));
+    }
+    requestAnimationFrame(function () {
+      doIt();
+      setTimeout(function () { doIt(); restoring = false; }, 250);
+    });
+  }
+
+  function closeSheet() {
+    if (sheetEl && sheetEl.parentNode) sheetEl.parentNode.removeChild(sheetEl);
+    sheetEl = null;
+  }
+
+  function openIndex(book) {
+    closeSheet();
+    var cur = currentPos().ch, bms = getBm(book.id), onlyBm = false;
+    sheetEl = el("div", "sheet");
+    sheetEl.onclick = function (e) { if (e.target === sheetEl) closeSheet(); };
+    var panel = el("div", "panel");
+    var head = el("div", "ph");
+    head.appendChild(el("strong", null, "الفهرس"));
+    var f = el("button", "chip", "⭐ العلامات");
+    head.appendChild(f);
+    var x = el("button", "chip", "إغلاق");
+    x.onclick = closeSheet;
+    head.appendChild(x);
+    panel.appendChild(head);
+    var list = el("div", "pl");
+    panel.appendChild(list);
+    function draw() {
+      list.textContent = "";
+      var n = 0;
+      book.chapters.forEach(function (c, i) {
+        var mark = bms.indexOf(c.id) !== -1;
+        if (onlyBm && !mark) return;
+        n++;
+        var b = el("button", "pi" + (i === cur ? " cur" : ""));
+        b.appendChild(el("span", null, c.title));
+        if (mark) b.appendChild(el("span", "star", "⭐"));
+        b.onclick = function () { closeSheet(); restoreTo(i, 0); };
+        list.appendChild(b);
+      });
+      if (!n) list.appendChild(el("div", "empty", "ما عندك علامات بعد. اضغط ☆ جنب عنوان أي فصل."));
+    }
+    f.onclick = function () { onlyBm = !onlyBm; f.classList.toggle("on", onlyBm); draw(); };
+    draw();
+    sheetEl.appendChild(panel);
+    document.body.appendChild(sheetEl);
+  }
+
+  function renderBook(v) {
+    var book = findBook(v.id);
+    if (!book) { stack.pop(); render(); return; }
+    curBook = book;
+    titleEl.textContent = book.title;
+
+    var tools = el("div", "reader-tools sticky");
+    var plus = el("button", "chip", "A+");
+    var minus = el("button", "chip", "A−");
+    function resize(d) {
+      var p = currentPos();
+      cfg.fs = Math.max(16, Math.min(40, cfg.fs + d)); applyFont(); saveCfg();
+      restoreTo(p.ch, p.r);
+    }
+    plus.onclick = function () { resize(2); };
+    minus.onclick = function () { resize(-2); };
+    var idx = el("button", "chip", "☰ الفهرس");
+    idx.onclick = function () { openIndex(book); };
+    [plus, minus, idx].forEach(function (b) { tools.appendChild(b); });
+    viewEl.appendChild(tools);
+    tools.style.top = ($("bar").offsetHeight - 1) + "px";
+
+    var paper = el("article", "paper");
+    var bms = getBm(book.id);
+    book.chapters.forEach(function (c) {
+      var sec = el("section", "chap");
+      var h = el("h2");
+      h.appendChild(el("span", null, c.title));
+      var st = el("button", "bm", bms.indexOf(c.id) !== -1 ? "⭐" : "☆");
+      st.setAttribute("aria-label", "علامة");
+      st.onclick = function () {
+        var a = getBm(book.id), k = a.indexOf(c.id);
+        if (k === -1) { a.push(c.id); st.textContent = "⭐"; toast("تمت إضافة علامة"); }
+        else { a.splice(k, 1); st.textContent = "☆"; }
+        setBm(book.id, a);
+      };
+      h.appendChild(st);
+      sec.appendChild(h);
+      sec.appendChild(el("div", "text", c.text));
+      paper.appendChild(sec);
+    });
+    if (book.source) paper.appendChild(el("div", "source", "📚 " + book.source));
+    viewEl.appendChild(paper);
+
+    // الرجوع لنفس المكان
+    var saved = getPos(book.id);
+    if (v.jump !== undefined) restoreTo(v.jump, 0);
+    else if (saved) restoreTo(saved.ch || 0, saved.r || 0);
+  }
+
+  window.addEventListener("scroll", function () {
+    if (!curBook) return;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(savePos, 350);
+  }, { passive: true });
+  document.addEventListener("visibilitychange", function () { if (document.hidden) savePos(); });
+  window.addEventListener("pagehide", savePos);
 
   /* ---------------- الإعدادات ---------------- */
   function sw(checked, onchange) {
@@ -288,8 +542,12 @@
   }
 
   // أحاديث قصيرة للإشعارات (تُؤخذ من قسم الأحاديث)
-  var QUOTES = (CATS.filter(function (c) { return c.id === "c7"; })[0] || { keys: [] }).keys
-    .map(function (k) { return { key: k, title: ITEMS[k].title, text: ITEMS[k].text, source: ITEMS[k].source }; });
+  var QUOTES = [];
+  function buildQuotes() {
+    QUOTES = (CATS.filter(function (c) { return c.id === "c7"; })[0] || { keys: [] }).keys
+      .map(function (k) { return { key: k, title: ITEMS[k].title, text: ITEMS[k].text, source: ITEMS[k].source }; });
+  }
+  buildQuotes();
 
   function parseTime(s) {
     var p = (s || "08:00").split(":");
@@ -416,8 +674,34 @@
     if (stack[stack.length - 1].type !== "settings") go({ type: "settings" });
   };
 
+  /* ---------------- تحديث المحتوى من الإنترنت ---------------- */
+  function checkUpdate() {
+    if (!window.fetch) return;
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 10000);
+    fetch(REMOTE_URL + "?t=" + Date.now(), { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        clearTimeout(timer);
+        if (!validData(d) || d.version <= VERSION) return;
+        applyData(d);
+        try { localStorage.setItem("remoteData", JSON.stringify(d)); } catch (e) {}
+        buildQuotes();
+        buildIndex();
+        var top = stack[stack.length - 1];
+        if (top.type === "book") { toast("تم تحديث المحتوى"); return; }
+        if (top.type === "item" && !ITEMS[top.key]) stack = [{ type: "home" }];
+        if (top.type === "cat" && !CATS.some(function (c) { return c.id === top.id; })) stack = [{ type: "home" }];
+        render();
+        scheduleAll(false);
+        toast("تم تحديث المحتوى");
+      })
+      .catch(function () { clearTimeout(timer); });
+  }
+
   applyTheme();
   applyFont();
   render();
   setupNative();
+  checkUpdate();
 })();

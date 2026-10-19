@@ -88,3 +88,35 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
   background:rgba(0,0,0,.82);color:#fff;padding:10px 18px;border-radius:999px;font-size:15px;
   opacity:0;pointer-events:none;transition:.25s;max-width:90%;text-align:center}
 #toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* المكتبة والكتب */
+.cat.wide{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 10px}
+.cat.wide .ic{margin:0;font-size:30px}
+.cat.wide .nm{display:inline}
+.cat.wide .ct{display:inline;margin:0}
+.resume{display:block;width:100%;text-align:right;background:var(--brand-2);color:#fff;border:0;
+  border-radius:18px;padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow);font:inherit;cursor:pointer}
+.resume:active{filter:brightness(.92)}
+.resume .rt{display:block;font-size:13px;opacity:.85}
+.resume .rn{display:block;font-size:19px;font-weight:700;margin-top:2px}
+.resume .rp{display:block;font-size:14px;opacity:.9;margin-top:2px}
+.row.book .bk{display:flex;flex-direction:column;gap:2px;text-align:right}
+.row.book .bt{font-size:19px}
+.row.book .ba{font-size:14px;color:var(--muted);font-weight:400}
+.row.book .bp{font-size:13px;color:var(--brand-2);font-weight:600}
+.chap + .chap{margin-top:22px;padding-top:18px;border-top:1px dashed var(--line)}
+.paper .chap h2{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 12px}
+.bm{border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer;padding:2px 4px;color:var(--gold)}
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}
+.panel{width:100%;max-width:720px;max-height:80vh;background:var(--card);color:var(--ink);
+  border-radius:20px 20px 0 0;display:flex;flex-direction:column;
+  padding-bottom:env(safe-area-inset-bottom)}
+.panel .ph{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.panel .ph strong{flex:1;font-size:18px}
+.chip.on{background:var(--brand-2);color:#fff;border-color:var(--brand-2)}
+.panel .pl{overflow:auto;padding:6px 8px 14px}
+.pi{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:right;border:0;
+  background:transparent;color:var(--ink);font:inherit;font-size:17px;padding:12px 10px;border-radius:12px;cursor:pointer}
+.pi:active{background:var(--line)}
+.pi.cur{background:var(--line);font-weight:700}
+.reader-tools.sticky{position:sticky;z-index:4;background:var(--bg);margin:0 -14px 10px;padding:8px 14px}
