@@ -93,7 +93,7 @@
       INDEX[k] = norm(ITEMS[k].title + " " + ITEMS[k].text);
     });
     BOOKS.forEach(function (b) {
-      b.chapters.forEach(function (c, i) {
+      (b.chapters || []).forEach(function (c, i) {
         BINDEX.push({ id: b.id, i: i, book: b.title, title: c.title, n: norm(c.title + " " + c.text) });
       });
     });
@@ -131,13 +131,14 @@
   var query = "";
 
   function go(v) {
-    if (stack[stack.length - 1].type === "book") savePos();
+    if (isReader(stack[stack.length - 1])) savePos();
     stack.push(v); render(); window.scrollTo(0, 0);
   }
+  function isReader(v) { return v.type === "book" || v.type === "vol"; }
   function goBack() {
     if (sheetEl) { closeSheet(); return true; }
     if (stack.length > 1) {
-      if (stack[stack.length - 1].type === "book") savePos();
+      if (isReader(stack[stack.length - 1])) savePos();
       stack.pop(); render(); return true;
     }
     return false;
@@ -146,6 +147,7 @@
   function render() {
     var v = stack[stack.length - 1];
     viewEl.textContent = "";
+    if (io) { io.disconnect(); io = null; }
     btnBack.hidden = stack.length <= 1;
     if (v.type === "home") renderHome();
     else if (v.type === "cat") renderCat(v);
@@ -153,6 +155,7 @@
     else if (v.type === "settings") renderSettings();
     else if (v.type === "lib") renderLib();
     else if (v.type === "book") renderBook(v);
+    else if (v.type === "vol") renderScan(v);
   }
 
   /* ---------------- الرئيسية ---------------- */
@@ -193,7 +196,7 @@
         rb.appendChild(el("span", "rt", "📖 تابع القراءة"));
         rb.appendChild(el("span", "rn", last.book.title));
         rb.appendChild(el("span", "rp", last.chTitle + (last.pct ? " — " + last.pct + "%" : "")));
-        rb.onclick = function () { go({ type: "book", id: last.book.id }); };
+        rb.onclick = function () { openBook(last.book.id); };
         box.appendChild(rb);
       }
       box.appendChild(el("div", "hello", "اختر القسم"));
@@ -285,9 +288,14 @@
     var best = null;
     BOOKS.forEach(function (b) {
       var p = getPos(b.id);
-      if (p && (!best || p.t > best.p.t)) best = { book: b, p: p };
+      if (p && p.t && (!best || p.t > best.p.t)) best = { book: b, p: p };
     });
     if (!best) return null;
+    if (best.book.kind === "scan") {
+      var vv = (best.book.volumes || []).filter(function (x) { return x.id === best.p.vol; })[0];
+      if (!vv) return null;
+      return { book: best.book, chTitle: vv.title + " – صفحة " + ((best.p.ch || 0) + vv.off), pct: best.p.pct || 0 };
+    }
     var i = Math.min(best.p.ch || 0, best.book.chapters.length - 1);
     return { book: best.book, chTitle: best.book.chapters[i].title, pct: best.p.pct || 0 };
   }
@@ -301,7 +309,8 @@
       box.appendChild(el("span", "bt", b.title));
       box.appendChild(el("span", "ba", b.author));
       var p = getPos(b.id);
-      if (p && p.pct) box.appendChild(el("span", "bp", "تمت قراءة " + p.pct + "%"));
+      if (b.kind === "scan") box.appendChild(el("span", "bp", b.volumes.length + " جزء"));
+      else if (p && p.pct) box.appendChild(el("span", "bp", "تمت قراءة " + p.pct + "%"));
       btn.appendChild(box);
       btn.appendChild(el("span", "chev", "‹"));
       btn.onclick = function () { go({ type: "book", id: b.id }); };
@@ -311,14 +320,14 @@
     viewEl.appendChild(list);
   }
 
-  var sheetEl = null, scrollTimer = null, restoring = false, curBook = null;
+  var sheetEl = null, scrollTimer = null, restoring = false, curBook = null, io = null;
 
   function barH() {
     var b = $("bar"), t = viewEl.querySelector(".reader-tools.sticky");
     return (b ? b.offsetHeight : 0) + (t ? t.offsetHeight : 0);
   }
 
-  function chapEls() { return viewEl.querySelectorAll(".chap"); }
+  function chapEls() { return viewEl.querySelectorAll(".chap, .spage"); }
 
   function currentPos() {
     var chs = chapEls(), h = barH() + 12, idx = 0, r = 0;
@@ -335,7 +344,11 @@
   function savePos() {
     if (!curBook || restoring) return;
     var top = stack[stack.length - 1];
-    if (!top || top.type !== "book") return;
+    if (!top || !isReader(top)) return;
+    if (curBook.kind === "scan") {
+      if (top.type !== "vol") return;
+      var p = currentPos(); p.vol = top.vol; setPos(curBook.id, p); return;
+    }
     setPos(curBook.id, currentPos());
   }
 
@@ -400,6 +413,7 @@
   function renderBook(v) {
     var book = findBook(v.id);
     if (!book) { stack.pop(); render(); return; }
+    if (book.kind === "scan") { curBook = null; renderVolumes(book); return; }
     curBook = book;
     titleEl.textContent = book.title;
 
@@ -447,8 +461,257 @@
     else if (saved) restoreTo(saved.ch || 0, saved.r || 0);
   }
 
+  /* ---------------- الكتب المصوّرة (صور صفحات) ---------------- */
+  var pageLbl = null, curOff = 1;
+  var BASE = REMOTE_URL.replace(/[^\/]*$/, "");
+  var dlBusy = {};
+  var _db = null;
+  function idb() {
+    if (!_db) _db = new Promise(function (res, rej) {
+      var r = indexedDB.open("scanbooks", 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore("p"); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+    return _db;
+  }
+  function idbDo(mode, fn) {
+    return idb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction("p", mode), rq = fn(tx.objectStore("p"));
+        tx.oncomplete = function () { res(rq && rq.result); };
+        tx.onerror = tx.onabort = function () { rej(tx.error); };
+      });
+    });
+  }
+  function vkey(b, v) { return b.id + ":" + v.id + ":"; }
+  function isDown(b, v) { return idbDo("readonly", function (s) { return s.get(vkey(b, v) + "done"); }).then(function (x) { return !!x; }, function () { return false; }); }
+  function delVol(b, v) {
+    var k = vkey(b, v);
+    return idbDo("readwrite", function (s) { return s.delete(IDBKeyRange.bound(k, k + "￿")); });
+  }
+  function fmtMB(n) { return n + " ميغا"; }
+
+  function downloadVol(b, v, onProg) {
+    var total = 0;
+    v.parts.forEach(function (p) { p.sizes.forEach(function (n) { total += n; }); });
+    var got = 0, pn = 0;
+    function doPart(pi) {
+      if (pi >= v.parts.length) return Promise.resolve();
+      var part = v.parts[pi];
+      return fetch(BASE + part.f).then(function (r) {
+        if (!r.ok) throw new Error("http " + r.status);
+        if (!r.body || !r.body.getReader) {
+          return r.arrayBuffer().then(function (ab) { got += ab.byteLength; onProg(got / total); return [new Blob([ab])]; });
+        }
+        var rd = r.body.getReader(), chunks = [];
+        function pump() {
+          return rd.read().then(function (x) {
+            if (x.done) return chunks;
+            chunks.push(x.value); got += x.value.length; onProg(got / total);
+            return pump();
+          });
+        }
+        return pump();
+      }).then(function (chunks) {
+        var blob = new Blob(chunks, { type: "image/webp" });
+        var sum = part.sizes.reduce(function (a, n) { return a + n; }, 0);
+        if (blob.size !== sum) throw new Error("size mismatch");
+        var start = pn, off = 0;
+        pn += part.sizes.length;
+        return idbDo("readwrite", function (s) {
+          part.sizes.forEach(function (n, i) {
+            s.put(blob.slice(off, off + n, "image/webp"), vkey(b, v) + (start + i));
+            off += n;
+          });
+        });
+      }).then(function () { return doPart(pi + 1); });
+    }
+    return doPart(0).then(function () {
+      return idbDo("readwrite", function (s) { return s.put(true, vkey(b, v) + "done"); });
+    });
+  }
+
+  function openBook(id) {
+    var b = findBook(id), p = getPos(id);
+    if (b && b.kind === "scan" && p && p.vol) {
+      var v = b.volumes.filter(function (x) { return x.id === p.vol; })[0];
+      if (v) {
+        isDown(b, v).then(function (ok) {
+          stack.push({ type: "book", id: id });
+          if (ok) stack.push({ type: "vol", id: id, vol: v.id });
+          render(); window.scrollTo(0, 0);
+        });
+        return;
+      }
+    }
+    go({ type: "book", id: id });
+  }
+
+  function renderVolumes(book) {
+    titleEl.textContent = book.title;
+    var box = el("div");
+    box.appendChild(el("div", "volinfo", book.desc || ""));
+    var list = el("div", "list");
+    var saved = getPos(book.id);
+    book.volumes.forEach(function (v) {
+      var btn = el("button", "row book");
+      var bx = el("span", "bk");
+      bx.appendChild(el("span", "bt", v.title));
+      bx.appendChild(el("span", "ba", v.pages + " صفحة · " + fmtMB(v.mb)));
+      var st = el("span", "bp", "⬇ اضغط للتحميل");
+      bx.appendChild(st);
+      var bar = el("span", "dlbar"); var fill = el("i"); bar.appendChild(fill); bar.hidden = true;
+      bx.appendChild(bar);
+      btn.appendChild(bx);
+      var del = el("span", "chip", "🗑 حذف"); del.hidden = true;
+      btn.appendChild(del);
+      var state = false;
+      function paint() {
+        if (dlBusy[book.id + v.id]) { return; }
+        st.textContent = state ? ("✓ محمّل" + (saved && saved.vol === v.id ? " — وصلت صفحة " + ((saved.ch || 0) + v.off) : "")) : "⬇ اضغط للتحميل";
+        del.hidden = !state;
+      }
+      isDown(book, v).then(function (ok) { state = ok; paint(); });
+      del.onclick = function (e) {
+        e.stopPropagation();
+        if (!confirm("حذف " + v.title + " من الجهاز؟ (تقدر تحمّله مرة ثانية)")) return;
+        delVol(book, v).then(function () { state = false; paint(); toast("تم الحذف"); });
+      };
+      btn.onclick = function () {
+        if (dlBusy[book.id + v.id]) return;
+        if (state) { go({ type: "vol", id: book.id, vol: v.id }); return; }
+        dlBusy[book.id + v.id] = true; bar.hidden = false; st.textContent = "جاري التحميل 0%";
+        downloadVol(book, v, function (f) { fill.style.width = Math.round(f * 100) + "%"; st.textContent = "جاري التحميل " + Math.round(f * 100) + "%"; })
+          .then(function () { state = true; toast("تم التحميل"); })
+          .catch(function () { toast("فشل التحميل — تأكد من الإنترنت وحاول مرة ثانية"); })
+          .then(function () { delete dlBusy[book.id + v.id]; bar.hidden = true; paint(); });
+      };
+      list.appendChild(btn);
+    });
+    box.appendChild(list);
+    if (book.source) box.appendChild(el("div", "source", "📚 " + book.source));
+    viewEl.appendChild(box);
+  }
+
+  function zoomGet() { try { return +localStorage.getItem("scanzoom") || 100; } catch (e) { return 100; } }
+
+  function renderScan(v) {
+    var book = findBook(v.id), vol = book && book.volumes.filter(function (x) { return x.id === v.vol; })[0];
+    if (!vol) { stack.pop(); render(); return; }
+    curBook = book; curOff = vol.off;
+    titleEl.textContent = book.title + " – " + vol.title;
+    var zoom = zoomGet();
+
+    var tools = el("div", "reader-tools sticky");
+    var zi = el("button", "chip", "🔍+"), zo = el("button", "chip", "🔍−");
+    var idxb = el("button", "chip", "☰ الفهرس");
+    var star = el("button", "chip", "☆ علامة");
+    pageLbl = el("span", "pglbl", "");
+    [zo, zi, idxb, star, pageLbl].forEach(function (b) { tools.appendChild(b); });
+    viewEl.appendChild(tools);
+    tools.style.top = ($("bar").offsetHeight - 1) + "px";
+
+    var wrap = el("div", "scanbox");
+    var pages = [];
+    function applyZoom() {
+      pages.forEach(function (p) { p.style.width = zoom + "%"; });
+    }
+    for (var i = 0; i < vol.pages; i++) {
+      var d = el("div", "spage");
+      d.style.aspectRatio = String(vol.dims[i] || 0.7);
+      d.dataset.i = i;
+      pages.push(d); wrap.appendChild(d);
+    }
+    applyZoom();
+    viewEl.appendChild(wrap);
+    if (book.source) viewEl.appendChild(el("div", "source", "📚 " + book.source));
+
+    function setZoom(z) {
+      var p = currentPos();
+      zoom = Math.max(100, Math.min(300, z));
+      try { localStorage.setItem("scanzoom", String(zoom)); } catch (e) {}
+      applyZoom(); restoreTo(p.ch, p.r);
+    }
+    zi.onclick = function () { setZoom(zoom + 50); };
+    zo.onclick = function () { setZoom(zoom - 50); };
+    function jump(pg) { closeSheet(); restoreTo(Math.max(0, Math.min(vol.pages - 1, pg)), 0); }
+    function bmKey(i) { return vol.id + ":" + i; }
+    star.onclick = function () {
+      var a = getBm(book.id), k = bmKey(currentPos().ch), j = a.indexOf(k);
+      if (j === -1) { a.push(k); toast("تمت إضافة علامة"); } else { a.splice(j, 1); toast("أُزيلت العلامة"); }
+      setBm(book.id, a);
+    };
+    idxb.onclick = function () {
+      closeSheet();
+      sheetEl = el("div", "sheet");
+      sheetEl.onclick = function (e) { if (e.target === sheetEl) closeSheet(); };
+      var panel = el("div", "panel");
+      var head = el("div", "ph");
+      head.appendChild(el("strong", null, "الفهرس"));
+      var x = el("button", "chip", "إغلاق"); x.onclick = closeSheet; head.appendChild(x);
+      panel.appendChild(head);
+      var go1 = el("div", "gopage");
+      var inp = el("input"); inp.type = "number"; inp.placeholder = "رقم الصفحة"; inp.inputMode = "numeric";
+      var gb = el("button", "chip on", "اذهب");
+      gb.onclick = function () { var n = parseInt(inp.value, 10); if (n) jump(n - vol.off); };
+      go1.appendChild(inp); go1.appendChild(gb);
+      panel.appendChild(go1);
+      var list = el("div", "pl");
+      (vol.toc || []).forEach(function (t) {
+        var b = el("button", "pi");
+        b.appendChild(el("span", null, t.t));
+        b.appendChild(el("span", "pn", "ص " + t.p));
+        b.onclick = function () { jump(t.p - vol.off); };
+        list.appendChild(b);
+      });
+      var bms = getBm(book.id).filter(function (k) { return k.indexOf(vol.id + ":") === 0; })
+        .map(function (k) { return +k.split(":")[1]; }).sort(function (a, b) { return a - b; });
+      if (bms.length) {
+        list.appendChild(el("div", "pgroup", "⭐ علاماتك"));
+        bms.forEach(function (i) {
+          var b = el("button", "pi");
+          b.appendChild(el("span", null, "صفحة " + (i + vol.off)));
+          b.onclick = function () { jump(i); };
+          list.appendChild(b);
+        });
+      }
+      panel.appendChild(list);
+      sheetEl.appendChild(panel);
+      document.body.appendChild(sheetEl);
+    };
+
+    // تحميل الصور عند الاقتراب منها فقط، وتفريغها عند الابتعاد (لتوفير الذاكرة)
+    io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        var d = e.target;
+        if (e.isIntersecting) {
+          if (d.firstChild || d._ld) return;
+          d._ld = true;
+          idbDo("readonly", function (s) { return s.get(vkey(book, vol) + d.dataset.i); }).then(function (bl) {
+            d._ld = false;
+            if (!bl || d.firstChild || !io) return;
+            var im = new Image(); im.alt = "";
+            im.src = d._url = URL.createObjectURL(bl);
+            d.appendChild(im);
+          }, function () { d._ld = false; });
+        } else if (d.firstChild) {
+          d.removeChild(d.firstChild);
+          if (d._url) { URL.revokeObjectURL(d._url); d._url = null; }
+        }
+      });
+    }, { rootMargin: "1500px 0px" });
+    pages.forEach(function (p) { io.observe(p); });
+
+    var saved = getPos(book.id);
+    if (v.jump !== undefined) restoreTo(v.jump, 0);
+    else if (saved && saved.vol === vol.id) restoreTo(saved.ch || 0, saved.r || 0);
+    pageLbl.textContent = "ص " + ((saved && saved.vol === vol.id ? saved.ch || 0 : 0) + vol.off);
+  }
+
   window.addEventListener("scroll", function () {
     if (!curBook) return;
+    if (pageLbl) { var cp = currentPos(); pageLbl.textContent = "ص " + (cp.ch + curOff); }
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(savePos, 350);
   }, { passive: true });
