@@ -499,7 +499,7 @@
     function doPart(pi) {
       if (pi >= v.parts.length) return Promise.resolve();
       var part = v.parts[pi];
-      return fetch(BASE + part.f).then(function (r) {
+      return fetch(part.f).then(function (r) { return r.ok ? r : fetch(BASE + part.f); }, function () { return fetch(BASE + part.f); }).then(function (r) {
         if (!r.ok) throw new Error("http " + r.status);
         if (!r.body || !r.body.getReader) {
           return r.arrayBuffer().then(function (ab) { got += ab.byteLength; onProg(got / total); return [new Blob([ab])]; });
@@ -793,6 +793,12 @@
     about.appendChild(el("p", "note",
       "أدعية وزيارات وأحاديث بمصادرها الشيعية. يعمل بدون إنترنت. " +
       "راجع النصوص والمصادر من الكتب المعتمدة عند الاعتماد عليها."));
+    about.appendChild(el("p", "note",
+      "هذا التطبيق غير ربحي ومجاني بالكامل، أُنشئ خدمةً لمحبّي أهل البيت (عليهم السلام) " +
+      "وابتغاءً لوجه الله تعالى. لا إعلانات ولا اشتراكات ولا جمع بيانات، ويُمنع بيعه أو الاتجار به."));
+    about.appendChild(el("p", "note",
+      "الكتب المصوّرة في المكتبة محفوظة حقوق طباعتها لدور النشر وأصحابها، وهي للقراءة الشخصية فقط، " +
+      "ولا يجوز نشرها أو توزيعها. وإن كنتَ صاحب حقٍّ وتودّ حذف كتابك فسنحذفه فوراً."));
     viewEl.appendChild(about);
   }
 
