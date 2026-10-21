@@ -202,10 +202,11 @@
       box.appendChild(el("div", "hello", "اختر القسم"));
       var grid = el("div", "grid");
       CATS.forEach(function (c) {
+        if (c.parent) return;
         var b = el("button", "cat");
         b.appendChild(el("span", "ic", c.icon));
         b.appendChild(el("span", "nm", c.name));
-        b.appendChild(el("span", "ct", c.keys.length + " عنوان"));
+        b.appendChild(el("span", "ct", (c.keys.length + CATS.reduce(function (n, x) { return n + (x.parent === c.id ? x.keys.length : 0); }, 0)) + " عنوان"));
         b.onclick = function () { go({ type: "cat", id: c.id }); };
         grid.appendChild(b);
       });
@@ -235,6 +236,16 @@
     var c = CATS.filter(function (x) { return x.id === v.id; })[0];
     titleEl.textContent = c.icon + " " + c.name;
     var list = el("div", "list");
+    CATS.filter(function (x) { return x.parent === c.id; }).forEach(function (sc) {
+      var b = el("button", "row book");
+      var bx = el("span", "bk");
+      bx.appendChild(el("span", "bt", sc.icon + " " + sc.name));
+      bx.appendChild(el("span", "ba", sc.keys.length + " عنوان"));
+      b.appendChild(bx);
+      b.appendChild(el("span", "chev", "‹"));
+      b.onclick = function () { go({ type: "cat", id: sc.id }); };
+      list.appendChild(b);
+    });
     c.keys.forEach(function (k) { list.appendChild(itemRow(k)); });
     viewEl.appendChild(list);
   }
@@ -894,7 +905,9 @@
   // أحاديث قصيرة للإشعارات (تُؤخذ من قسم الأحاديث)
   var QUOTES = [];
   function buildQuotes() {
-    QUOTES = (CATS.filter(function (c) { return c.id === "c7"; })[0] || { keys: [] }).keys
+    var ks = [];
+    CATS.forEach(function (c) { if (c.id === "c7" || c.parent === "c7") ks = ks.concat(c.keys); });
+    QUOTES = ks
       .map(function (k) { return { key: k, title: ITEMS[k].title, text: ITEMS[k].text, source: ITEMS[k].source }; });
   }
   buildQuotes();
