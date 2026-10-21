@@ -240,6 +240,81 @@
   }
 
   /* ---------------- القراءة ---------------- */
+  /* ---------------- بطاقة صورة للمشاركة ---------------- */
+  function makeCard(title, text, source) {
+    var W = 1080, P = 90, FS = 44, LH = 82, max = 760;
+    text = text.replace(/\s+/g, " ").trim();
+    if (text.length > max) {
+      var cut = text.lastIndexOf(" ", max);
+      text = text.slice(0, cut > 300 ? cut : max) + " ...";
+    }
+    var FONT = '"Noto Naskh Arabic","Traditional Arabic","Amiri",serif';
+    var c = document.createElement("canvas"), x = c.getContext("2d");
+    function wrap(str, size, weight) {
+      x.font = weight + " " + size + "px " + FONT;
+      var words = str.split(" "), lines = [], cur = "";
+      words.forEach(function (w) {
+        var t = cur ? cur + " " + w : w;
+        if (x.measureText(t).width > W - 2 * P && cur) { lines.push(cur); cur = w; } else cur = t;
+      });
+      if (cur) lines.push(cur);
+      return lines;
+    }
+    var tl = wrap(title, 54, "bold"), bl = wrap(text, FS, "normal");
+    var sl = source ? wrap("المصدر: " + source, 30, "normal") : [];
+    var H = 140 + tl.length * 90 + 70 + bl.length * LH + (sl.length ? 70 + sl.length * 50 : 0) + 190;
+    c.width = W; c.height = Math.max(H, 900);
+    var g = x.createLinearGradient(0, 0, 0, c.height);
+    g.addColorStop(0, "#0f3d2e"); g.addColorStop(1, "#0b2a20");
+    x.fillStyle = g; x.fillRect(0, 0, W, c.height);
+    x.strokeStyle = "#d9b86a"; x.lineWidth = 4; x.strokeRect(34, 34, W - 68, c.height - 68);
+    x.strokeStyle = "rgba(217,184,106,.45)"; x.lineWidth = 2; x.strokeRect(50, 50, W - 100, c.height - 100);
+    x.direction = "rtl"; x.textAlign = "center"; x.textBaseline = "alphabetic";
+    var y = 170;
+    x.fillStyle = "#f3d98b"; x.font = "bold 54px " + FONT;
+    tl.forEach(function (l) { x.fillText(l, W / 2, y); y += 90; });
+    y += 10; x.fillStyle = "#d9b86a"; x.fillRect(W / 2 - 80, y, 160, 4); y += 70;
+    x.fillStyle = "#ffffff"; x.font = FS + "px " + FONT; x.textAlign = "right";
+    bl.forEach(function (l) { x.fillText(l, W - P, y); y += LH; });
+    if (sl.length) {
+      y += 30; x.fillStyle = "#b9c9bf"; x.font = "30px " + FONT; x.textAlign = "center";
+      sl.forEach(function (l) { x.fillText(l, W / 2, y); y += 50; });
+    }
+    x.fillStyle = "#d9b86a"; x.font = "28px " + FONT; x.textAlign = "center";
+    x.fillText("تطبيق أدعية وزيارات", W / 2, c.height - 95);
+    return c;
+  }
+
+  function shareCard(title, text, source) {
+    var c = makeCard(title, text, source);
+    c.toBlob(function (blob) {
+      if (!blob) { toast("تعذّر إنشاء الصورة"); return; }
+      var P = window.Capacitor && window.Capacitor.Plugins || {};
+      var fname = "dua-card-" + Date.now() + ".png";
+      if (P.Filesystem && P.Share) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var b64 = String(fr.result).split(",")[1];
+          P.Filesystem.writeFile({ path: fname, data: b64, directory: "CACHE" })
+            .then(function (r) { return P.Share.share({ title: title, files: [r.uri], dialogTitle: "مشاركة البطاقة" }); })
+            .catch(function (e) { if (!e || !/cancel/i.test(String(e.message || e))) toast("تعذّرت المشاركة"); });
+        };
+        fr.readAsDataURL(blob);
+        return;
+      }
+      var file; try { file = new File([blob], fname, { type: "image/png" }); } catch (e) {}
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: title }).catch(function () {});
+        return;
+      }
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = fname;
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      toast("تم حفظ الصورة");
+    }, "image/png");
+  }
+
   function renderItem(v) {
     var it = ITEMS[v.key];
     titleEl.textContent = it.title;
@@ -257,7 +332,13 @@
       if (navigator.share) navigator.share({ title: it.title, text: full }).catch(function () {});
       else copyText(full);
     };
-    [plus, minus, cp, sh].forEach(function (b) { tools.appendChild(b); });
+    var im = el("button", "chip on", "🖼 بطاقة صورة");
+    im.onclick = function () {
+      var sel = "";
+      try { sel = String(window.getSelection() || "").trim(); } catch (e) {}
+      shareCard(it.title, sel || it.text, it.source);
+    };
+    [plus, minus, cp, sh, im].forEach(function (b) { tools.appendChild(b); });
     viewEl.appendChild(tools);
 
     var paper = el("article", "paper");
