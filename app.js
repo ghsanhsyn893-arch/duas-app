@@ -386,7 +386,7 @@
     if (best.book.kind === "scan") {
       var vv = (best.book.volumes || []).filter(function (x) { return x.id === best.p.vol; })[0];
       if (!vv) return null;
-      return { book: best.book, chTitle: vv.title + " – صفحة " + ((best.p.ch || 0) + vv.off), pct: best.p.pct || 0 };
+      return { book: best.book, chTitle: vv.title + " – صفحة " + i2p(vv, best.p.ch || 0), pct: best.p.pct || 0 };
     }
     var i = Math.min(best.p.ch || 0, best.book.chapters.length - 1);
     return { book: best.book, chTitle: best.book.chapters[i].title, pct: best.p.pct || 0 };
@@ -554,7 +554,21 @@
   }
 
   /* ---------------- الكتب المصوّرة (صور صفحات) ---------------- */
-  var pageLbl = null, curOff = 1;
+  var pageLbl = null, curOff = 1, curVol = null;
+  function p2i(vol, p) {
+    var m = vol.pm;
+    if (!m) return p - vol.off;
+    var a = m[0][1];
+    for (var k = 0; k < m.length; k++) if (p >= m[k][0]) a = m[k][1];
+    return p + a;
+  }
+  function i2p(vol, i) {
+    var m = vol.pm;
+    if (!m) return i + vol.off;
+    var a = m[0][1];
+    for (var k = 0; k < m.length; k++) if (i >= m[k][0] + m[k][1]) a = m[k][1];
+    return i - a;
+  }
   var BASE = REMOTE_URL.replace(/[^\/]*$/, "");
   var dlBusy = {};
   var _db = null;
@@ -661,7 +675,7 @@
       var state = false;
       function paint() {
         if (dlBusy[book.id + v.id]) { return; }
-        st.textContent = state ? ("✓ محمّل" + (saved && saved.vol === v.id ? " — وصلت صفحة " + ((saved.ch || 0) + v.off) : "")) : "⬇ اضغط للتحميل";
+        st.textContent = state ? ("✓ محمّل" + (saved && saved.vol === v.id ? " — وصلت صفحة " + i2p(v, saved.ch || 0) : "")) : "⬇ اضغط للتحميل";
         del.hidden = !state;
       }
       isDown(book, v).then(function (ok) { state = ok; paint(); });
@@ -691,7 +705,7 @@
   function renderScan(v) {
     var book = findBook(v.id), vol = book && book.volumes.filter(function (x) { return x.id === v.vol; })[0];
     if (!vol) { stack.pop(); render(); return; }
-    curBook = book; curOff = vol.off;
+    curBook = book; curOff = vol.off; curVol = vol;
     titleEl.textContent = book.title + " – " + vol.title;
     var zoom = zoomGet();
 
@@ -746,7 +760,7 @@
       var go1 = el("div", "gopage");
       var inp = el("input"); inp.type = "number"; inp.placeholder = "رقم الصفحة"; inp.inputMode = "numeric";
       var gb = el("button", "chip on", "اذهب");
-      gb.onclick = function () { var n = parseInt(inp.value, 10); if (n) jump(n - vol.off); };
+      gb.onclick = function () { var n = parseInt(inp.value, 10); if (n) jump(p2i(vol, n)); };
       go1.appendChild(inp); go1.appendChild(gb);
       panel.appendChild(go1);
       var list = el("div", "pl");
@@ -754,7 +768,7 @@
         var b = el("button", "pi");
         b.appendChild(el("span", null, t.t));
         b.appendChild(el("span", "pn", "ص " + t.p));
-        b.onclick = function () { jump(t.p - vol.off); };
+        b.onclick = function () { jump(p2i(vol, t.p)); };
         list.appendChild(b);
       });
       var bms = getBm(book.id).filter(function (k) { return k.indexOf(vol.id + ":") === 0; })
@@ -763,7 +777,7 @@
         list.appendChild(el("div", "pgroup", "⭐ علاماتك"));
         bms.forEach(function (i) {
           var b = el("button", "pi");
-          b.appendChild(el("span", null, "صفحة " + (i + vol.off)));
+          b.appendChild(el("span", null, "صفحة " + i2p(vol, i)));
           b.onclick = function () { jump(i); };
           list.appendChild(b);
         });
@@ -798,12 +812,12 @@
     var saved = getPos(book.id);
     if (v.jump !== undefined) restoreTo(v.jump, 0);
     else if (saved && saved.vol === vol.id) restoreTo(saved.ch || 0, saved.r || 0);
-    pageLbl.textContent = "ص " + ((saved && saved.vol === vol.id ? saved.ch || 0 : 0) + vol.off);
+    pageLbl.textContent = "ص " + i2p(vol, saved && saved.vol === vol.id ? saved.ch || 0 : 0);
   }
 
   window.addEventListener("scroll", function () {
     if (!curBook) return;
-    if (pageLbl) { var cp = currentPos(); pageLbl.textContent = "ص " + (cp.ch + curOff); }
+    if (pageLbl) { var cp = currentPos(); pageLbl.textContent = "ص " + i2p(curVol || {off: curOff}, cp.ch); }
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(savePos, 350);
   }, { passive: true });
