@@ -156,6 +156,69 @@
     else if (v.type === "lib") renderLib();
     else if (v.type === "book") renderBook(v);
     else if (v.type === "vol") renderScan(v);
+    else if (v.type === "tasbih") renderTasbih();
+  }
+
+  /* ---------------- المسبحة ---------------- */
+  var TSB = [
+    { n: "تسبيح الزهراء (ع)", seq: [["الله أكبر", 34], ["الحمد لله", 33], ["سبحان الله", 33]] },
+    { n: "سبحان الله", seq: [["سبحان الله", 100]] },
+    { n: "الحمد لله", seq: [["الحمد لله", 100]] },
+    { n: "الله أكبر", seq: [["الله أكبر", 100]] },
+    { n: "لا إله إلا الله", seq: [["لا إله إلا الله", 100]] },
+    { n: "أستغفر الله", seq: [["أستغفر الله", 100]] },
+    { n: "اللهم صلِّ على محمد وآل محمد", seq: [["اللهم صلِّ على محمد وآل محمد", 100]] },
+    { n: "حرّة (بدون هدف)", seq: [["", 0]] }
+  ];
+  function tsGet() {
+    try { var o = JSON.parse(localStorage.getItem("tasbih") || "null"); if (o && typeof o.c === "number") return o; } catch (e) {}
+    return { m: 0, st: 0, c: 0, tot: 0 };
+  }
+  function tsSet(o) { try { localStorage.setItem("tasbih", JSON.stringify(o)); } catch (e) {} }
+  function renderTasbih() {
+    titleEl.textContent = "المسبحة";
+    var S = tsGet();
+    if (!TSB[S.m] || !TSB[S.m].seq[S.st]) { S = { m: 0, st: 0, c: 0, tot: S.tot || 0 }; }
+    var box = el("div", "tsb");
+    var sel = el("select", "tsel");
+    TSB.forEach(function (t, i) { var o = el("option", null, t.n); o.value = i; if (i === S.m) o.selected = true; sel.appendChild(o); });
+    box.appendChild(sel);
+    var name = el("div", "tname", "");
+    var cnt = el("button", "tbtn", "0");
+    var goal = el("div", "tgoal", "");
+    var tot = el("div", "tgoal", "");
+    var row = el("div", "reader-tools");
+    var rs = el("button", "chip", "↺ تصفير");
+    var vb = el("button", "chip", "");
+    row.appendChild(rs); row.appendChild(vb);
+    [sel, name, cnt, goal, tot, row].forEach(function (x) { box.appendChild(x); });
+    viewEl.appendChild(box);
+    var vibOn = true;
+    try { vibOn = localStorage.getItem("tsvib") !== "0"; } catch (e) {}
+    function buzz(ms) { if (vibOn && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
+    function paint() {
+      var t = TSB[S.m], q = t.seq[S.st];
+      name.textContent = q[0] || "";
+      cnt.textContent = S.c;
+      goal.textContent = q[1] ? ("الهدف: " + q[1] + (t.seq.length > 1 ? " — المرحلة " + (S.st + 1) + " من " + t.seq.length : "")) : "";
+      tot.textContent = "المجموع الكلي: " + S.tot;
+      vb.textContent = vibOn ? "📳 الاهتزاز: يعمل" : "🔇 الاهتزاز: متوقف";
+      tsSet(S);
+    }
+    cnt.onclick = function () {
+      var q = TSB[S.m].seq[S.st];
+      S.c++; S.tot++;
+      if (q[1] && S.c >= q[1]) {
+        buzz([120, 60, 120]);
+        if (S.st < TSB[S.m].seq.length - 1) { S.st++; S.c = 0; toast("المرحلة التالية: " + TSB[S.m].seq[S.st][0]); }
+        else { toast("اكتمل التسبيح ✓"); S.c = 0; S.st = 0; }
+      } else buzz(15);
+      paint();
+    };
+    sel.onchange = function () { S.m = +sel.value; S.st = 0; S.c = 0; paint(); };
+    rs.onclick = function () { S.c = 0; S.st = 0; paint(); };
+    vb.onclick = function () { vibOn = !vibOn; try { localStorage.setItem("tsvib", vibOn ? "1" : "0"); } catch (e) {} paint(); };
+    paint();
   }
 
   /* ---------------- الرئيسية ---------------- */
@@ -210,6 +273,12 @@
         b.onclick = function () { go({ type: "cat", id: c.id }); };
         grid.appendChild(b);
       });
+      var tb = el("button", "cat wide");
+      tb.appendChild(el("span", "ic", "📿"));
+      tb.appendChild(el("span", "nm", "المسبحة"));
+      tb.appendChild(el("span", "ct", "عدّاد التسبيح"));
+      tb.onclick = function () { go({ type: "tasbih" }); };
+      grid.appendChild(tb);
       if (BOOKS.length) {
         var lb = el("button", "cat wide");
         lb.appendChild(el("span", "ic", "📚"));

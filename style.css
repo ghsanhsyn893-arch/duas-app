@@ -135,3 +135,11 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .gopage input{flex:1;font:inherit;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:inherit}
 .pi .pn{opacity:.7;font-size:13px}
 .pgroup{padding:10px 14px 4px;font-weight:700}
+
+.tsb{display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:6px}
+.tsel{width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:17px}
+.tname{font-size:26px;color:var(--brand-2);text-align:center;min-height:36px;font-weight:700}
+.tbtn{width:min(78vw,300px);height:min(78vw,300px);border-radius:50%;border:6px solid var(--gold);background:var(--card);color:var(--ink);
+  font:inherit;font-size:84px;font-weight:700;box-shadow:var(--shadow);touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
+.tbtn:active{background:var(--line);transform:scale(.97)}
+.tgoal{font-size:16px;color:var(--muted)}
