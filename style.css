@@ -143,3 +143,4 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
   font:inherit;font-size:84px;font-weight:700;box-shadow:var(--shadow);touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
 .tbtn:active{background:var(--line);transform:scale(.97)}
 .tgoal{font-size:16px;color:var(--muted)}
+.row.book{gap:12px}.row.book .bk{flex:1}.bcov{width:56px;height:80px;object-fit:cover;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);flex:none}

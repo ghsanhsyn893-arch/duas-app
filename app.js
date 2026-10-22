@@ -472,6 +472,10 @@
       var p = getPos(b.id);
       if (b.kind === "scan") box.appendChild(el("span", "bp", b.volumes.length + " جزء"));
       else if (p && p.pct) box.appendChild(el("span", "bp", "تمت قراءة " + p.pct + "%"));
+      var cv = el("img", "bcov"); cv.alt = ""; cv.loading = "lazy";
+      cv.onerror = function () { cv.remove(); };
+      cv.src = BASE + "covers/" + b.id + ".jpg";
+      btn.appendChild(cv);
       btn.appendChild(box);
       btn.appendChild(el("span", "chev", "‹"));
       btn.onclick = function () { go({ type: "book", id: b.id }); };
