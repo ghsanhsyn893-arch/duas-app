@@ -144,3 +144,17 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .tbtn:active{background:var(--line);transform:scale(.97)}
 .tgoal{font-size:16px;color:var(--muted)}
 .row.book{gap:12px}.row.book .bk{flex:1}.bcov{width:56px;height:80px;object-fit:cover;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);flex:none}
+
+.scanbox.bookmode{display:flex;flex-direction:row;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;width:100vw;margin-inline:calc(50% - 50vw);scrollbar-width:none;overscroll-behavior-x:contain}
+.scanbox.bookmode::-webkit-scrollbar{display:none}
+.bookmode .spage{flex:0 0 100%;min-width:0;width:100%;height:100%;margin:0;box-shadow:none;scroll-snap-align:start;scroll-snap-stop:always;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.bookmode .spage img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain}
+.bookmode.spread .spage{flex-basis:50%;width:50%}
+.bookmode.spread .spage:nth-child(odd){scroll-snap-align:start}
+.bookmode.spread .spage:nth-child(even){scroll-snap-align:none}
+.bookmode.spread .spage:nth-child(odd) img{object-position:right center}
+.bookmode.spread .spage:nth-child(even) img{object-position:left center}
+.bookmode.zoomed{scroll-snap-type:none}
+.bookmode.zoomed .spage{overflow:auto;align-items:flex-start;justify-content:flex-start;flex-basis:100%;-webkit-overflow-scrolling:touch}
+.bookmode.zoomed .spage img{max-width:none;max-height:none;height:auto}
