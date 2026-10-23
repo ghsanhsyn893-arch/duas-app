@@ -810,118 +810,62 @@
   }
 
 
-  /* ---------------- الذكاء الاصطناعي (مفاتيح تُدخَل يدوياً وتبقى على الجهاز) ---------------- */
-  var AIP = [
-    { id: "g", name: "Gemini", model: "gemini-flash-latest" },
-    { id: "q", name: "Groq", model: "meta-llama/llama-4-scout-17b-16e-instruct" },
-    { id: "o", name: "OpenRouter", model: "google/gemma-3-27b-it:free" }
-  ];
-  function aiGet() { try { return JSON.parse(localStorage.getItem("aicfg") || "{}") || {}; } catch (e) { return {}; } }
-  function aiSet(o) { try { localStorage.setItem("aicfg", JSON.stringify(o)); } catch (e) {} }
-  var AI_PROMPT = "أنت مساعد لقراءة كتب الأدعية والحديث الشيعية. الصورة صفحة من كتاب. اشرح باللغة العربية الفصحى المبسّطة " +
-    "ما هو مكتوب فيها فقط، بناءً على النص الظاهر في الصورة. لا تضف حديثاً أو دعاءً أو معلومة من عندك أو من الذاكرة، " +
-    "ولا تنسب قولاً لمعصوم لم يظهر في الصفحة. إذا كان الجزء غير واضح فقل ذلك صراحةً. " +
-    "اشرح معاني الألفاظ الصعبة بإيجاز، ثم لخّص المعنى العام.";
-  function aiErr(status, data) {
-    var m = "";
-    try { var d = typeof data === "string" ? JSON.parse(data) : data; m = (d && (d.error && (d.error.message || d.error) || d.message)) || ""; } catch (e) { m = String(data || "").slice(0, 120); }
-    var e = new Error("HTTP " + status + (m ? " – " + String(m).slice(0, 140) : "")); e.status = status; return e;
-  }
-  function aiHttp(url, headers, body) {
-    var C = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
-    headers["Content-Type"] = "application/json";
-    function viaFetch() {
-      var ac = window.AbortController ? new AbortController() : null;
-      var t = setTimeout(function () { if (ac) ac.abort(); }, 60000);
-      return fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body), signal: ac && ac.signal }).then(function (r) {
-        clearTimeout(t);
-        return r.text().then(function (tx) { if (!r.ok) throw aiErr(r.status, tx); return JSON.parse(tx); });
-      }, function (e) { clearTimeout(t); throw new Error(e && e.name === "AbortError" ? "انتهت المهلة" : "تعذّر الاتصال"); });
-    }
-    if (C && C.post) {
-      var timer, to = new Promise(function (_, rej) { timer = setTimeout(function () { rej(new Error("native-timeout")); }, 45000); });
-      var nat = C.post({ url: url, headers: headers, data: body, connectTimeout: 30000, readTimeout: 60000 }).then(function (r) {
-        clearTimeout(timer);
-        if (r.status < 200 || r.status >= 300) throw aiErr(r.status, r.data);
-        return typeof r.data === "string" ? JSON.parse(r.data) : r.data;
-      });
-      return Promise.race([nat, to]).catch(function (e) {
-        if (e && e.status) throw e;
-        return viaFetch();
-      });
-    }
-    return viaFetch();
-  }
-  function aiCall(p, key, model, q, b64) {
-    var text = !b64 ? q : AI_PROMPT + (q ? "\n\nالمطلوب تحديداً: " + q : "\n\nاشرح هذه الصفحة.");
-    if (p.id === "g") {
-      return aiHttp("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
-        { "x-goog-api-key": key },
-        { contents: [{ parts: b64 ? [{ text: text }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] : [{ text: text }] }] })
-        .then(function (j) { return j.candidates[0].content.parts.map(function (x) { return x.text || ""; }).join(""); });
-    }
-    var url = p.id === "q" ? "https://api.groq.com/openai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-    return aiHttp(url, { Authorization: "Bearer " + key }, {
-      model: model, messages: [{ role: "user", content: b64 ? [{ type: "text", text: text },
-        { type: "image_url", image_url: { url: "data:image/jpeg;base64," + b64 } }] : text }]
-    }).then(function (j) { return j.choices[0].message.content; });
-  }
-  function aiRun(q, b64, log) {
-    var c = aiGet(), list = AIP.filter(function (p) { return c[p.id] && c[p.id].key; });
-    if (!list.length) return Promise.reject(new Error("nokey"));
-    var i = 0, lastErr = "";
-    function next() {
-      if (i >= list.length) return Promise.reject(new Error("all: " + lastErr));
-      var p = list[i++];
-      log("جاري الشرح عبر " + p.name + "…");
-      return aiCall(p, c[p.id].key.trim(), (c[p.id].model || p.model).trim(), q, b64)
-        .then(function (t) { return { name: p.name, text: t }; }, function (e) { log(p.name + ": فشل – " + e.message + " … أجرّب التالي"); lastErr = e.message; return next(); });
-    }
-    return next();
-  }
-  function blobToJpeg(bl) {
+  /* ---------------- اشرح الصفحة عبر تطبيق ذكاء اصطناعي (مشاركة) ---------------- */
+  var AI_Q = "هذه صفحة من كتاب أدعية/حديث شيعي. اشرح لي بالعربية المبسّطة ما هو مكتوب فيها فقط بناءً على النص الظاهر، " +
+    "ولا تضف حديثاً أو معلومة من عندك أو من الذاكرة، وإن كان شيء غير واضح فقل ذلك. ";
+  function blobToJpegBlob(bl) {
     return new Promise(function (res, rej) {
       var u = URL.createObjectURL(bl), im = new Image();
       im.onload = function () {
         var c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
         var x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0);
-        URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", 0.85).split(",")[1]);
+        URL.revokeObjectURL(u); c.toBlob(function (b) { b ? res(b) : rej(new Error("img")); }, "image/jpeg", 0.9);
       };
       im.onerror = function () { URL.revokeObjectURL(u); rej(new Error("img")); };
       im.src = u;
     });
   }
-  function aiSheet(book, vol, idx) {
+  function aiShare(book, vol, idx) {
     closeSheet();
     sheetEl = el("div", "sheet");
     sheetEl.onclick = function (e) { if (e.target === sheetEl) closeSheet(); };
     var panel = el("div", "panel");
     var head = el("div", "ph");
-    head.appendChild(el("strong", null, "🤖 شرح صفحة " + i2p(vol, idx)));
+    head.appendChild(el("strong", null, "🤖 اشرح صفحة " + i2p(vol, idx)));
     var x = el("button", "chip", "إغلاق"); x.onclick = closeSheet; head.appendChild(x);
     panel.appendChild(head);
     var box = el("div", "aibox");
     var q = el("textarea", "aiq"); q.rows = 2;
     q.placeholder = "اكتب الموضع اللي ما فهمته أو سؤالك (اختياري). اتركه فارغاً لشرح الصفحة كلها.";
-    var go = el("button", "chip on", "اشرح");
-    var out = el("div", "aiout");
-    box.appendChild(q); box.appendChild(go); box.appendChild(out);
+    var go = el("button", "chip on", "إرسال لتطبيق الذكاء الاصطناعي");
+    box.appendChild(q); box.appendChild(go);
+    box.appendChild(el("div", "ainote", "يفتح قائمة المشاركة: اختر Claude أو Gemini أو أي تطبيق عندك. نص السؤال يُنسخ تلقائياً، الصقه إذا لم يظهر. الشرح آلي وقد يخطئ."));
     panel.appendChild(box);
     sheetEl.appendChild(panel);
     document.body.appendChild(sheetEl);
     go.onclick = function () {
-      out.textContent = "جاري التحضير…"; go.disabled = true;
+      var text = AI_Q + (q.value.trim() ? "المطلوب تحديداً: " + q.value.trim() : "اشرح الصفحة كلها.");
+      try { if (navigator.clipboard) navigator.clipboard.writeText(text); } catch (e) {}
+      go.disabled = true;
       idbDo("readonly", function (s) { return s.get(vkey(book, vol) + idx); })
-        .then(function (bl) { if (!bl) throw new Error("nopage"); return blobToJpeg(bl); })
-        .then(function (b64) { return aiRun(q.value.trim(), b64, function (m) { out.textContent = m; }); })
-        .then(function (r) {
-          out.textContent = "";
-          out.appendChild(el("div", "aitxt", r.text));
-          out.appendChild(el("div", "ainote", "⚠️ شرح آلي عبر " + r.name + " وقد يخطئ. ارجع للمصدر والعلماء للاعتماد."));
-        }, function (e) {
-          out.textContent = e.message === "nokey" ? "ما أضفت أي مفتاح. افتح الإعدادات ← 🤖 الذكاء الاصطناعي وأدخل مفتاحاً."
-            : e.message.indexOf("all") === 0 ? "كل الخدمات فشلت (" + e.message.slice(5) + "). تأكد من المفتاح أو جرّب لاحقاً."
-            : e.message === "nopage" ? "الصفحة غير محمّلة بعد، تحرك لها أولاً." : "تعذّر: " + e.message;
+        .then(function (bl) { if (!bl) throw new Error("nopage"); return blobToJpegBlob(bl); })
+        .then(function (jb) {
+          var P = window.Capacitor && window.Capacitor.Plugins || {}, fname = "page-" + Date.now() + ".jpg";
+          if (P.Filesystem && P.Share) {
+            return new Promise(function (res, rej) {
+              var fr = new FileReader();
+              fr.onload = function () { res(String(fr.result).split(",")[1]); };
+              fr.onerror = rej; fr.readAsDataURL(jb);
+            }).then(function (b64) { return P.Filesystem.writeFile({ path: fname, data: b64, directory: "CACHE" }); })
+              .then(function (r) { return P.Share.share({ text: text, files: [r.uri], dialogTitle: "اشرح عبر…" }); });
+          }
+          var file = new File([jb], fname, { type: "image/jpeg" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file], text: text });
+          throw new Error("nosupport");
+        })
+        .then(function () { toast("تم، الصق السؤال إذا لم يظهر"); }, function (e) {
+          var m = String(e && e.message || e);
+          if (!/cancel|abort/i.test(m)) toast(m === "nopage" ? "الصفحة غير محمّلة بعد" : "تعذّرت المشاركة");
         }).then(function () { go.disabled = false; });
     };
   }
@@ -968,7 +912,7 @@
     }
     zi.onclick = function () { setZoom(zoom + 50); };
     zo.onclick = function () { setZoom(zoom - 50); };
-    aib.onclick = function () { aiSheet(book, vol, currentPos().ch); };
+    aib.onclick = function () { aiShare(book, vol, currentPos().ch); };
     function jump(pg) { closeSheet(); restoreTo(Math.max(0, Math.min(vol.pages - 1, pg)), 0); }
     function bmKey(i) { return vol.id + ":" + i; }
     star.onclick = function () {
@@ -1121,29 +1065,6 @@
     rng.oninput = function () { cfg.fs = +rng.value; applyFont(); saveCfg(); };
     look.appendChild(row("حجم خط القراءة", null, rng));
     viewEl.appendChild(look);
-
-
-    var aic = el("section", "card");
-    aic.appendChild(el("h3", null, "🤖 الذكاء الاصطناعي"));
-    aic.appendChild(el("p", "note", "مفاتيح مجانية تُحفظ على جهازك فقط ولا تُرفع لأي مكان. يجرّب بالترتيب وينتقل للتالي إذا خلص الحد. أدخل واحداً أو أكثر."));
-    var acfg = aiGet();
-    AIP.forEach(function (p) {
-      var inp = document.createElement("input");
-      inp.type = "password"; inp.placeholder = "مفتاح " + p.name; inp.value = (acfg[p.id] && acfg[p.id].key) || "";
-      inp.className = "aikey"; inp.autocomplete = "off";
-      inp.onchange = function () { var c = aiGet(); c[p.id] = c[p.id] || {}; c[p.id].key = inp.value.trim(); aiSet(c); toast("تم الحفظ"); };
-      aic.appendChild(row(p.name, p.model, inp));
-    });
-    var tst = el("button", "chip on", "اختبار الاتصال"), tout = el("p", "note", "");
-    tst.onclick = function () {
-      var t0 = Date.now(); tout.textContent = "جاري الاختبار…";
-      aiRun("أجب بكلمة واحدة فقط: مرحبا", null, function (m) { tout.textContent = m; })
-        .then(function (r) { tout.textContent = "✓ " + r.name + " اشتغل (" + Math.round((Date.now() - t0) / 1000) + " ث): " + String(r.text).slice(0, 60); },
-          function (e) { tout.textContent = "✗ " + e.message; });
-    };
-    aic.appendChild(tst); aic.appendChild(tout);
-    aic.appendChild(el("p", "note", "الشرح آلي وقد يخطئ، وصورة الصفحة تُرسل للخدمة المختارة عند الضغط على اشرح."));
-    viewEl.appendChild(aic);
 
     var about = el("section", "card");
     about.appendChild(el("h3", null, "ℹ️ عن التطبيق"));
