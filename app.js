@@ -148,8 +148,6 @@
     var v = stack[stack.length - 1];
     viewEl.textContent = "";
     if (io) { io.disconnect(); io = null; }
-    if (bookBox && bookBox._rz) window.removeEventListener("resize", bookBox._rz);
-    bookBox = null;
     btnBack.hidden = stack.length <= 1;
     if (v.type === "home") renderHome();
     else if (v.type === "cat") renderCat(v);
@@ -497,10 +495,6 @@
   function chapEls() { return viewEl.querySelectorAll(".chap, .spage"); }
 
   function currentPos() {
-    if (bookBox && bookBox.isConnected) {
-      var bi = bookIdx(), n = bookBox.children.length;
-      return { ch: bi, r: 0, pct: n > 1 ? Math.round(100 * bi / (n - 1)) : 0, t: Date.now() };
-    }
     var chs = chapEls(), h = barH() + 12, idx = 0, r = 0;
     for (var i = 0; i < chs.length; i++) {
       var rc = chs[i].getBoundingClientRect();
@@ -524,16 +518,6 @@
   }
 
   function restoreTo(i, r) {
-    if (bookBox && bookBox.isConnected) {
-      var pg = bookBox.children[Math.max(0, Math.min(bookBox.children.length - 1, i))];
-      if (!pg) return;
-      if (spreadOn() && getZoomNow() === 100 && (+pg.dataset.i) % 2 === 1) pg = pg.previousElementSibling || pg;
-      restoring = true;
-      var off = pg.offsetLeft - bookBox.offsetLeft;
-      bookBox.scrollTo({ left: bookBox.scrollLeft + (pg.getBoundingClientRect().left - bookBox.getBoundingClientRect().left) - (spreadOn() && getZoomNow() === 100 ? bookBox.clientWidth - pg.getBoundingClientRect().width * 2 : 0), top: 0, behavior: "auto" });
-      setTimeout(function () { restoring = false; }, 300);
-      return;
-    }
     var chs = chapEls();
     if (!chs.length) return;
     i = Math.max(0, Math.min(chs.length - 1, i));
@@ -638,7 +622,6 @@
 
     // الرجوع لنفس المكان
     var saved = getPos(book.id);
-    if (isBook) { fitBook(); setTimeout(fitBook, 120); setTimeout(fitBook, 600); }
     if (v.jump !== undefined) restoreTo(v.jump, 0);
     else if (saved) restoreTo(saved.ch || 0, saved.r || 0);
   }
@@ -790,22 +773,6 @@
     viewEl.appendChild(box);
   }
 
-  var bookBox = null;
-  function modeGet() { try { return localStorage.getItem("scanmode") === "scroll" ? "scroll" : "book"; } catch (e) { return "book"; } }
-  function spreadOn() { return window.innerWidth >= 900 && window.innerWidth > window.innerHeight; }
-  function bookIdx() {
-    if (!bookBox) return 0;
-    var pg = bookBox.children, cx = bookBox.getBoundingClientRect().left + bookBox.clientWidth / 2, best = 0, bd = 1e9;
-    var sp = spreadOn() && getZoomNow() === 100;
-    for (var i = 0; i < pg.length; i++) {
-      var r = pg[i].getBoundingClientRect();
-      if (r.right < -50 || r.left > window.innerWidth + 50) continue;
-      var d = sp ? Math.abs(r.left + r.width / 2 - (bookBox.getBoundingClientRect().right - 1)) : Math.abs(r.left + r.width / 2 - cx);
-      if (d < bd) { bd = d; best = i; }
-    }
-    return best;
-  }
-  function getZoomNow() { try { return +localStorage.getItem("scanzoom") || 100; } catch (e) { return 100; } }
   function zoomGet() { try { return +localStorage.getItem("scanzoom") || 100; } catch (e) { return 100; } }
 
   function renderScan(v) {
@@ -814,67 +781,30 @@
     curBook = book; curOff = vol.off; curVol = vol;
     titleEl.textContent = book.title + " – " + vol.title;
     var zoom = zoomGet();
-    var mode = modeGet(), isBook = mode === "book";
-    bookBox = null;
 
     var tools = el("div", "reader-tools sticky");
     var zi = el("button", "chip", "🔍+"), zo = el("button", "chip", "🔍−");
     var idxb = el("button", "chip", "☰ الفهرس");
     var star = el("button", "chip", "☆ علامة");
     pageLbl = el("span", "pglbl", "");
-    var mb = el("button", "chip", isBook ? "📜 تمرير" : "📖 كتاب");
-    mb.onclick = function () {
-      var p = currentPos(); try { localStorage.setItem("scanmode", isBook ? "scroll" : "book"); } catch (e) {}
-      setPos(book.id, { ch: p.ch, r: p.r, pct: p.pct, t: Date.now(), vol: vol.id });
-      render();
-    };
-    var pv = el("button", "chip", "›"), nx = el("button", "chip", "‹");
-    var tl = [zo, zi, idxb, star, mb];
-    if (isBook) tl = [pv, nx].concat(tl);
-    tl.concat([pageLbl]).forEach(function (b) { tools.appendChild(b); });
+    [zo, zi, idxb, star, pageLbl].forEach(function (b) { tools.appendChild(b); });
     viewEl.appendChild(tools);
     tools.style.top = ($("bar").offsetHeight - 1) + "px";
 
-    var wrap = el("div", isBook ? "scanbox bookmode" : "scanbox");
-    if (isBook) bookBox = wrap;
-    function fitBook() {
-      if (!isBook) return;
-      var h = window.innerHeight - (wrap.getBoundingClientRect().top + (window.pageYOffset || 0)) - 2;
-      wrap.style.height = Math.max(200, h) + "px";
-      wrap.classList.toggle("spread", spreadOn() && zoom === 100);
-      wrap.classList.toggle("zoomed", zoom > 100);
-    }
+    var wrap = el("div", "scanbox");
     var pages = [];
     function applyZoom() {
-      pages.forEach(function (p) { p.style.width = isBook ? "" : zoom + "%"; if (isBook) p.firstChild && (p.firstChild.style.width = zoom > 100 ? zoom + "%" : ""); });
-      fitBook();
+      pages.forEach(function (p) { p.style.width = zoom + "%"; });
     }
     for (var i = 0; i < vol.pages; i++) {
       var d = el("div", "spage");
-      if (!isBook) d.style.aspectRatio = String(vol.dims[i] || 0.7);
+      d.style.aspectRatio = String(vol.dims[i] || 0.7);
       d.dataset.i = i;
       pages.push(d); wrap.appendChild(d);
     }
     applyZoom();
     viewEl.appendChild(wrap);
-    if (book.source && !isBook) viewEl.appendChild(el("div", "source", "📚 " + book.source));
-    function step(dir) {
-      var w = wrap.clientWidth;
-      wrap.scrollBy({ left: dir * w, behavior: "smooth" });
-    }
-    pv.onclick = function () { step(1); };
-    nx.onclick = function () { step(-1); };
-    if (isBook) {
-      var rz = function () { fitBook(); };
-      window.addEventListener("resize", rz);
-      wrap._rz = rz;
-      var tm = null;
-      wrap.addEventListener("scroll", function () {
-        if (pageLbl) pageLbl.textContent = "ص " + i2p(vol, bookIdx());
-        clearTimeout(tm); tm = setTimeout(savePos, 350);
-      }, { passive: true });
-      fitBook();
-    }
+    if (book.source) viewEl.appendChild(el("div", "source", "📚 " + book.source));
 
     function setZoom(z) {
       var p = currentPos();
@@ -942,7 +872,6 @@
             if (!bl || d.firstChild || !io) return;
             var im = new Image(); im.alt = "";
             im.src = d._url = URL.createObjectURL(bl);
-            if (isBook && zoom > 100) im.style.width = zoom + "%";
             d.appendChild(im);
           }, function () { d._ld = false; });
         } else if (d.firstChild) {
@@ -950,7 +879,7 @@
           if (d._url) { URL.revokeObjectURL(d._url); d._url = null; }
         }
       });
-    }, isBook ? { root: wrap, rootMargin: "0px 1600px" } : { rootMargin: "1500px 0px" });
+    }, { rootMargin: "1500px 0px" });
     pages.forEach(function (p) { io.observe(p); });
 
     var saved = getPos(book.id);
