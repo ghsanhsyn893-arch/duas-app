@@ -671,6 +671,55 @@
   }
   function fmtMB(n) { return n + " ميغا"; }
 
+  function b64Blob(b64) {
+    var bin = atob(b64), n = bin.length, u = new Uint8Array(n);
+    for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+  function getPart(book, part, add, undo) {
+    var urls = [];
+    if (book.packBase) urls.push(book.packBase.replace(/\/?$/, "/") + part.f);
+    urls.push(BASE + part.f);
+    var P = window.Capacitor && window.Capacitor.Plugins || {};
+    function viaFetch(u) {
+      var mine = 0;
+      return fetch(u).then(function (r) {
+        if (!r.ok) throw new Error("http " + r.status);
+        if (!r.body || !r.body.getReader) {
+          return r.arrayBuffer().then(function (ab) { mine += ab.byteLength; add(ab.byteLength); return [new Blob([ab])]; });
+        }
+        var rd = r.body.getReader(), chunks = [];
+        function pump() {
+          return rd.read().then(function (x) {
+            if (x.done) return chunks;
+            chunks.push(x.value); mine += x.value.length; add(x.value.length);
+            return pump();
+          });
+        }
+        return pump();
+      }).catch(function (e) { undo(mine); throw e; });
+    }
+    function viaNative(u) {
+      if (!P.CapacitorHttp) return Promise.reject(new Error("no native"));
+      return P.CapacitorHttp.get({ url: u, responseType: "blob", readTimeout: 120000, connectTimeout: 30000 }).then(function (r) {
+        if (r.status !== 200) throw new Error("http " + r.status);
+        var u8 = b64Blob(r.data); add(u8.length); return [u8];
+      });
+    }
+    function tryAt(i) {
+      if (i >= urls.length) return Promise.reject(new Error("all failed"));
+      return viaFetch(urls[i]).catch(function () { return tryAt(i + 1); });
+    }
+    return tryAt(0).catch(function () {
+      var j = 0;
+      function nat() {
+        if (j >= urls.length) return Promise.reject(new Error("all failed"));
+        return viaNative(urls[j++]).catch(nat);
+      }
+      return nat();
+    });
+  }
+
   function downloadVol(b, v, onProg) {
     var total = 0;
     v.parts.forEach(function (p) { p.sizes.forEach(function (n) { total += n; }); });
@@ -678,21 +727,8 @@
     function doPart(pi) {
       if (pi >= v.parts.length) return Promise.resolve();
       var part = v.parts[pi];
-      return fetch(part.f).then(function (r) { return r.ok ? r : fetch(BASE + part.f); }, function () { return fetch(BASE + part.f); }).then(function (r) {
-        if (!r.ok) throw new Error("http " + r.status);
-        if (!r.body || !r.body.getReader) {
-          return r.arrayBuffer().then(function (ab) { got += ab.byteLength; onProg(got / total); return [new Blob([ab])]; });
-        }
-        var rd = r.body.getReader(), chunks = [];
-        function pump() {
-          return rd.read().then(function (x) {
-            if (x.done) return chunks;
-            chunks.push(x.value); got += x.value.length; onProg(got / total);
-            return pump();
-          });
-        }
-        return pump();
-      }).then(function (chunks) {
+      return getPart(b, part, function (n) { got += n; onProg(Math.min(1, got / total)); }, function (n) { got -= n; })
+      .then(function (chunks) {
         var blob = new Blob(chunks, { type: "image/webp" });
         var sum = part.sizes.reduce(function (a, n) { return a + n; }, 0);
         if (blob.size !== sum) throw new Error("size mismatch");
