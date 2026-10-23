@@ -853,17 +853,17 @@
     return viaFetch();
   }
   function aiCall(p, key, model, q, b64) {
-    var text = AI_PROMPT + (q ? "\n\nالمطلوب تحديداً: " + q : "\n\nاشرح هذه الصفحة.");
+    var text = !b64 ? q : AI_PROMPT + (q ? "\n\nالمطلوب تحديداً: " + q : "\n\nاشرح هذه الصفحة.");
     if (p.id === "g") {
       return aiHttp("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
         { "x-goog-api-key": key },
-        { contents: [{ parts: [{ text: text }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }] })
+        { contents: [{ parts: b64 ? [{ text: text }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] : [{ text: text }] }] })
         .then(function (j) { return j.candidates[0].content.parts.map(function (x) { return x.text || ""; }).join(""); });
     }
     var url = p.id === "q" ? "https://api.groq.com/openai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
     return aiHttp(url, { Authorization: "Bearer " + key }, {
-      model: model, messages: [{ role: "user", content: [{ type: "text", text: text },
-        { type: "image_url", image_url: { url: "data:image/jpeg;base64," + b64 } }] }]
+      model: model, messages: [{ role: "user", content: b64 ? [{ type: "text", text: text },
+        { type: "image_url", image_url: { url: "data:image/jpeg;base64," + b64 } }] : text }]
     }).then(function (j) { return j.choices[0].message.content; });
   }
   function aiRun(q, b64, log) {
@@ -1134,6 +1134,14 @@
       inp.onchange = function () { var c = aiGet(); c[p.id] = c[p.id] || {}; c[p.id].key = inp.value.trim(); aiSet(c); toast("تم الحفظ"); };
       aic.appendChild(row(p.name, p.model, inp));
     });
+    var tst = el("button", "chip on", "اختبار الاتصال"), tout = el("p", "note", "");
+    tst.onclick = function () {
+      var t0 = Date.now(); tout.textContent = "جاري الاختبار…";
+      aiRun("أجب بكلمة واحدة فقط: مرحبا", null, function (m) { tout.textContent = m; })
+        .then(function (r) { tout.textContent = "✓ " + r.name + " اشتغل (" + Math.round((Date.now() - t0) / 1000) + " ث): " + String(r.text).slice(0, 60); },
+          function (e) { tout.textContent = "✗ " + e.message; });
+    };
+    aic.appendChild(tst); aic.appendChild(tout);
     aic.appendChild(el("p", "note", "الشرح آلي وقد يخطئ، وصورة الصفحة تُرسل للخدمة المختارة عند الضغط على اشرح."));
     viewEl.appendChild(aic);
 
