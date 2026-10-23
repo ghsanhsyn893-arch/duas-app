@@ -809,6 +809,107 @@
     viewEl.appendChild(box);
   }
 
+
+  /* ---------------- الذكاء الاصطناعي (مفاتيح تُدخَل يدوياً وتبقى على الجهاز) ---------------- */
+  var AIP = [
+    { id: "g", name: "Gemini", model: "gemini-flash-latest" },
+    { id: "q", name: "Groq", model: "meta-llama/llama-4-scout-17b-16e-instruct" },
+    { id: "o", name: "OpenRouter", model: "google/gemma-3-27b-it:free" }
+  ];
+  function aiGet() { try { return JSON.parse(localStorage.getItem("aicfg") || "{}") || {}; } catch (e) { return {}; } }
+  function aiSet(o) { try { localStorage.setItem("aicfg", JSON.stringify(o)); } catch (e) {} }
+  var AI_PROMPT = "أنت مساعد لقراءة كتب الأدعية والحديث الشيعية. الصورة صفحة من كتاب. اشرح باللغة العربية الفصحى المبسّطة " +
+    "ما هو مكتوب فيها فقط، بناءً على النص الظاهر في الصورة. لا تضف حديثاً أو دعاءً أو معلومة من عندك أو من الذاكرة، " +
+    "ولا تنسب قولاً لمعصوم لم يظهر في الصفحة. إذا كان الجزء غير واضح فقل ذلك صراحةً. " +
+    "اشرح معاني الألفاظ الصعبة بإيجاز، ثم لخّص المعنى العام.";
+  function aiHttp(url, headers, body) {
+    var C = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+    headers["Content-Type"] = "application/json";
+    if (C && C.post) {
+      return C.post({ url: url, headers: headers, data: body }).then(function (r) {
+        if (r.status < 200 || r.status >= 300) { var e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+        return typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+      });
+    }
+    return fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body) }).then(function (r) {
+      if (!r.ok) { var e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+      return r.json();
+    });
+  }
+  function aiCall(p, key, model, q, b64) {
+    var text = AI_PROMPT + (q ? "\n\nالمطلوب تحديداً: " + q : "\n\nاشرح هذه الصفحة.");
+    if (p.id === "g") {
+      return aiHttp("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
+        { "x-goog-api-key": key },
+        { contents: [{ parts: [{ text: text }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }] })
+        .then(function (j) { return j.candidates[0].content.parts.map(function (x) { return x.text || ""; }).join(""); });
+    }
+    var url = p.id === "q" ? "https://api.groq.com/openai/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
+    return aiHttp(url, { Authorization: "Bearer " + key }, {
+      model: model, messages: [{ role: "user", content: [{ type: "text", text: text },
+        { type: "image_url", image_url: { url: "data:image/jpeg;base64," + b64 } }] }]
+    }).then(function (j) { return j.choices[0].message.content; });
+  }
+  function aiRun(q, b64, log) {
+    var c = aiGet(), list = AIP.filter(function (p) { return c[p.id] && c[p.id].key; });
+    if (!list.length) return Promise.reject(new Error("nokey"));
+    var i = 0;
+    function next() {
+      if (i >= list.length) return Promise.reject(new Error("all"));
+      var p = list[i++];
+      log("جاري الشرح عبر " + p.name + "…");
+      return aiCall(p, c[p.id].key.trim(), (c[p.id].model || p.model).trim(), q, b64)
+        .then(function (t) { return { name: p.name, text: t }; }, function (e) { log(p.name + ": فشل (" + (e.status || e.message) + ")، أجرّب التالي…"); return next(); });
+    }
+    return next();
+  }
+  function blobToJpeg(bl) {
+    return new Promise(function (res, rej) {
+      var u = URL.createObjectURL(bl), im = new Image();
+      im.onload = function () {
+        var c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+        var x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0);
+        URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", 0.85).split(",")[1]);
+      };
+      im.onerror = function () { URL.revokeObjectURL(u); rej(new Error("img")); };
+      im.src = u;
+    });
+  }
+  function aiSheet(book, vol, idx) {
+    closeSheet();
+    sheetEl = el("div", "sheet");
+    sheetEl.onclick = function (e) { if (e.target === sheetEl) closeSheet(); };
+    var panel = el("div", "panel");
+    var head = el("div", "ph");
+    head.appendChild(el("strong", null, "🤖 شرح صفحة " + i2p(vol, idx)));
+    var x = el("button", "chip", "إغلاق"); x.onclick = closeSheet; head.appendChild(x);
+    panel.appendChild(head);
+    var box = el("div", "aibox");
+    var q = el("textarea", "aiq"); q.rows = 2;
+    q.placeholder = "اكتب الموضع اللي ما فهمته أو سؤالك (اختياري). اتركه فارغاً لشرح الصفحة كلها.";
+    var go = el("button", "chip on", "اشرح");
+    var out = el("div", "aiout");
+    box.appendChild(q); box.appendChild(go); box.appendChild(out);
+    panel.appendChild(box);
+    sheetEl.appendChild(panel);
+    document.body.appendChild(sheetEl);
+    go.onclick = function () {
+      out.textContent = "جاري التحضير…"; go.disabled = true;
+      idbDo("readonly", function (s) { return s.get(vkey(book, vol) + idx); })
+        .then(function (bl) { if (!bl) throw new Error("nopage"); return blobToJpeg(bl); })
+        .then(function (b64) { return aiRun(q.value.trim(), b64, function (m) { out.textContent = m; }); })
+        .then(function (r) {
+          out.textContent = "";
+          out.appendChild(el("div", "aitxt", r.text));
+          out.appendChild(el("div", "ainote", "⚠️ شرح آلي عبر " + r.name + " وقد يخطئ. ارجع للمصدر والعلماء للاعتماد."));
+        }, function (e) {
+          out.textContent = e.message === "nokey" ? "ما أضفت أي مفتاح. افتح الإعدادات ← 🤖 الذكاء الاصطناعي وأدخل مفتاحاً."
+            : e.message === "all" ? "كل الخدمات فشلت أو خلص حدها اليومي. جرّب لاحقاً أو أضف مفتاحاً آخر."
+            : e.message === "nopage" ? "الصفحة غير محمّلة بعد، تحرك لها أولاً." : "تعذّر: " + e.message;
+        }).then(function () { go.disabled = false; });
+    };
+  }
+
   function zoomGet() { try { return +localStorage.getItem("scanzoom") || 100; } catch (e) { return 100; } }
 
   function renderScan(v) {
@@ -822,8 +923,9 @@
     var zi = el("button", "chip", "🔍+"), zo = el("button", "chip", "🔍−");
     var idxb = el("button", "chip", "☰ الفهرس");
     var star = el("button", "chip", "☆ علامة");
+    var aib = el("button", "chip", "🤖 اشرح");
     pageLbl = el("span", "pglbl", "");
-    [zo, zi, idxb, star, pageLbl].forEach(function (b) { tools.appendChild(b); });
+    [zo, zi, idxb, star, aib, pageLbl].forEach(function (b) { tools.appendChild(b); });
     viewEl.appendChild(tools);
     tools.style.top = ($("bar").offsetHeight - 1) + "px";
 
@@ -850,6 +952,7 @@
     }
     zi.onclick = function () { setZoom(zoom + 50); };
     zo.onclick = function () { setZoom(zoom - 50); };
+    aib.onclick = function () { aiSheet(book, vol, currentPos().ch); };
     function jump(pg) { closeSheet(); restoreTo(Math.max(0, Math.min(vol.pages - 1, pg)), 0); }
     function bmKey(i) { return vol.id + ":" + i; }
     star.onclick = function () {
@@ -1002,6 +1105,21 @@
     rng.oninput = function () { cfg.fs = +rng.value; applyFont(); saveCfg(); };
     look.appendChild(row("حجم خط القراءة", null, rng));
     viewEl.appendChild(look);
+
+
+    var aic = el("section", "card");
+    aic.appendChild(el("h3", null, "🤖 الذكاء الاصطناعي"));
+    aic.appendChild(el("p", "note", "مفاتيح مجانية تُحفظ على جهازك فقط ولا تُرفع لأي مكان. يجرّب بالترتيب وينتقل للتالي إذا خلص الحد. أدخل واحداً أو أكثر."));
+    var acfg = aiGet();
+    AIP.forEach(function (p) {
+      var inp = document.createElement("input");
+      inp.type = "password"; inp.placeholder = "مفتاح " + p.name; inp.value = (acfg[p.id] && acfg[p.id].key) || "";
+      inp.className = "aikey"; inp.autocomplete = "off";
+      inp.onchange = function () { var c = aiGet(); c[p.id] = c[p.id] || {}; c[p.id].key = inp.value.trim(); aiSet(c); toast("تم الحفظ"); };
+      aic.appendChild(row(p.name, p.model, inp));
+    });
+    aic.appendChild(el("p", "note", "الشرح آلي وقد يخطئ، وصورة الصفحة تُرسل للخدمة المختارة عند الضغط على اشرح."));
+    viewEl.appendChild(aic);
 
     var about = el("section", "card");
     about.appendChild(el("h3", null, "ℹ️ عن التطبيق"));

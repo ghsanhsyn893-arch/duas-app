@@ -144,3 +144,9 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .tbtn:active{background:var(--line);transform:scale(.97)}
 .tgoal{font-size:16px;color:var(--muted)}
 .row.book{gap:12px}.row.book .bk{flex:1}.bcov{width:56px;height:80px;object-fit:cover;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.3);flex:none}
+
+.aibox{padding:10px;display:flex;flex-direction:column;gap:10px}
+.aiq{width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--line,#8886);background:transparent;color:inherit;font:inherit}
+.aiout{line-height:1.9;white-space:pre-wrap}
+.ainote{margin-top:10px;font-size:.85em;opacity:.8}
+.aikey{width:55%;max-width:220px;padding:8px;border-radius:8px;border:1px solid var(--line,#8886);background:transparent;color:inherit}
