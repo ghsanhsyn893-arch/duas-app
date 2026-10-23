@@ -822,19 +822,35 @@
     "ما هو مكتوب فيها فقط، بناءً على النص الظاهر في الصورة. لا تضف حديثاً أو دعاءً أو معلومة من عندك أو من الذاكرة، " +
     "ولا تنسب قولاً لمعصوم لم يظهر في الصفحة. إذا كان الجزء غير واضح فقل ذلك صراحةً. " +
     "اشرح معاني الألفاظ الصعبة بإيجاز، ثم لخّص المعنى العام.";
+  function aiErr(status, data) {
+    var m = "";
+    try { var d = typeof data === "string" ? JSON.parse(data) : data; m = (d && (d.error && (d.error.message || d.error) || d.message)) || ""; } catch (e) { m = String(data || "").slice(0, 120); }
+    var e = new Error("HTTP " + status + (m ? " – " + String(m).slice(0, 140) : "")); e.status = status; return e;
+  }
   function aiHttp(url, headers, body) {
     var C = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
     headers["Content-Type"] = "application/json";
+    function viaFetch() {
+      var ac = window.AbortController ? new AbortController() : null;
+      var t = setTimeout(function () { if (ac) ac.abort(); }, 60000);
+      return fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body), signal: ac && ac.signal }).then(function (r) {
+        clearTimeout(t);
+        return r.text().then(function (tx) { if (!r.ok) throw aiErr(r.status, tx); return JSON.parse(tx); });
+      }, function (e) { clearTimeout(t); throw new Error(e && e.name === "AbortError" ? "انتهت المهلة" : "تعذّر الاتصال"); });
+    }
     if (C && C.post) {
-      return C.post({ url: url, headers: headers, data: body }).then(function (r) {
-        if (r.status < 200 || r.status >= 300) { var e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+      var timer, to = new Promise(function (_, rej) { timer = setTimeout(function () { rej(new Error("native-timeout")); }, 45000); });
+      var nat = C.post({ url: url, headers: headers, data: body, connectTimeout: 30000, readTimeout: 60000 }).then(function (r) {
+        clearTimeout(timer);
+        if (r.status < 200 || r.status >= 300) throw aiErr(r.status, r.data);
         return typeof r.data === "string" ? JSON.parse(r.data) : r.data;
       });
+      return Promise.race([nat, to]).catch(function (e) {
+        if (e && e.status) throw e;
+        return viaFetch();
+      });
     }
-    return fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body) }).then(function (r) {
-      if (!r.ok) { var e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
-      return r.json();
-    });
+    return viaFetch();
   }
   function aiCall(p, key, model, q, b64) {
     var text = AI_PROMPT + (q ? "\n\nالمطلوب تحديداً: " + q : "\n\nاشرح هذه الصفحة.");
@@ -853,13 +869,13 @@
   function aiRun(q, b64, log) {
     var c = aiGet(), list = AIP.filter(function (p) { return c[p.id] && c[p.id].key; });
     if (!list.length) return Promise.reject(new Error("nokey"));
-    var i = 0;
+    var i = 0, lastErr = "";
     function next() {
-      if (i >= list.length) return Promise.reject(new Error("all"));
+      if (i >= list.length) return Promise.reject(new Error("all: " + lastErr));
       var p = list[i++];
       log("جاري الشرح عبر " + p.name + "…");
       return aiCall(p, c[p.id].key.trim(), (c[p.id].model || p.model).trim(), q, b64)
-        .then(function (t) { return { name: p.name, text: t }; }, function (e) { log(p.name + ": فشل (" + (e.status || e.message) + ")، أجرّب التالي…"); return next(); });
+        .then(function (t) { return { name: p.name, text: t }; }, function (e) { log(p.name + ": فشل – " + e.message + " … أجرّب التالي"); lastErr = e.message; return next(); });
     }
     return next();
   }
@@ -904,7 +920,7 @@
           out.appendChild(el("div", "ainote", "⚠️ شرح آلي عبر " + r.name + " وقد يخطئ. ارجع للمصدر والعلماء للاعتماد."));
         }, function (e) {
           out.textContent = e.message === "nokey" ? "ما أضفت أي مفتاح. افتح الإعدادات ← 🤖 الذكاء الاصطناعي وأدخل مفتاحاً."
-            : e.message === "all" ? "كل الخدمات فشلت أو خلص حدها اليومي. جرّب لاحقاً أو أضف مفتاحاً آخر."
+            : e.message.indexOf("all") === 0 ? "كل الخدمات فشلت (" + e.message.slice(5) + "). تأكد من المفتاح أو جرّب لاحقاً."
             : e.message === "nopage" ? "الصفحة غير محمّلة بعد، تحرك لها أولاً." : "تعذّر: " + e.message;
         }).then(function () { go.disabled = false; });
     };
