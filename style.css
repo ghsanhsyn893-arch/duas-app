@@ -148,3 +148,20 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .aibox{padding:10px;display:flex;flex-direction:column;gap:10px}
 .aiq{width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--line,#8886);background:transparent;color:inherit;font:inherit}
 .ainote{font-size:.85em;opacity:.8;line-height:1.7}
+
+/* المفضلة */
+.fstar{font-size:27px;line-height:1;color:var(--muted);padding:6px 8px;margin:-6px 0;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.fstar.on{color:var(--gold)}
+.chip.fav.on{border-color:var(--gold);color:var(--gold)}
+.favrow{margin:0 0 10px}
+.cat.wide.fav{border-color:var(--gold)}
+.shahada{text-align:center;margin:2px 0 16px;padding:18px 16px 14px;border-radius:18px;color:#fff;
+  background:linear-gradient(145deg,var(--brand),var(--brand-2));border:1px solid var(--gold);
+  box-shadow:inset 0 0 0 4px rgba(214,169,74,.18),var(--shadow)}
+.shahada .orn{color:var(--gold);letter-spacing:.4em;font-size:15px}
+.shahada .sh-t{font-size:20px;line-height:2.05;font-weight:600;margin:6px 4px;text-wrap:balance}
+.fsec{font-size:15px;font-weight:700;color:var(--gold);margin:14px 4px 8px}
+.favempty{text-align:center;padding:26px 14px;color:var(--muted)}
+.favempty .fe-i{font-size:46px;color:var(--gold);line-height:1}
+.favempty .fe-t{font-size:18px;font-weight:700;color:var(--ink);margin:8px 0 6px}
+.favempty .fe-s{font-size:14px;line-height:1.9}
