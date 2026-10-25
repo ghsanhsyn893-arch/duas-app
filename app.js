@@ -213,6 +213,107 @@
     else if (v.type === "book") renderBook(v);
     else if (v.type === "vol") renderScan(v);
     else if (v.type === "tasbih") renderTasbih();
+    else if (v.type === "hifz") renderHifz();
+  }
+
+
+  /* ---------------- حفظ القرآن ---------------- */
+  function hfGet() {
+    try {
+      var o = JSON.parse(localStorage.getItem("hifz") || "{}") || {};
+      return { agree: !!o.agree, plan: Array.isArray(o.plan) ? o.plan : [] };
+    } catch (e) { return { agree: false, plan: [] }; }
+  }
+  function hfSet(o) { try { localStorage.setItem("hifz", JSON.stringify(o)); } catch (e) {} }
+  function todayStr() {
+    var d = new Date(), m = d.getMonth() + 1, dd = d.getDate();
+    return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (dd < 10 ? "0" : "") + dd;
+  }
+  function quranVol() {
+    var b = findBook("quran"); return b && b.volumes && b.volumes[0] ? { b: b, v: b.volumes[0] } : null;
+  }
+  function surahAt(page) {
+    var q = quranVol(); if (!q) return "";
+    var name = "";
+    q.v.toc.forEach(function (t) { if (t.p <= page) name = t.t; });
+    return name;
+  }
+  function openQuranAt(page) {
+    var q = quranVol();
+    if (!q) { alert("المصحف غير موجود في المكتبة."); return; }
+    isDown(q.b, q.v).then(function (ok) {
+      if (!ok) { alert("حمّل المصحف أولاً من المكتبة، ثم ارجع واضغط فتح."); go({ type: "book", id: q.b.id }); return; }
+      var i = Math.max(0, Math.min(q.v.pages - 1, page - q.v.off));
+      go({ type: "vol", id: q.b.id, vol: q.v.id, jump: i });
+    });
+  }
+  function renderHifz() {
+    titleEl.textContent = "🕋 حفظ القرآن";
+    var H = hfGet();
+    if (!H.agree) {
+      var c = el("div", "hf-agree");
+      c.appendChild(el("div", "hf-h", "برنامج حفظ القرآن الكريم"));
+      c.appendChild(el("div", "hf-p", "هذا القسم يساعدك على تنظيم حفظك: أنت تضع جدولك بنفسك (التاريخ، ومن أي صفحة إلى أي صفحة)، وتؤشّر على ما أتممته، ويظهر لك تقدمك من المصحف."));
+      c.appendChild(el("div", "hf-p", "هل توافق على الدخول في برنامج حفظ القرآن؟"));
+      var yes = el("button", "chip hf-yes", "✅ موافق"), no = el("button", "chip", "رجوع");
+      yes.onclick = function () { H.agree = true; hfSet(H); render(); };
+      no.onclick = function () { goBack(); };
+      var row = el("div", "hf-btns"); row.appendChild(yes); row.appendChild(no);
+      c.appendChild(row);
+      viewEl.appendChild(c);
+      return;
+    }
+    var q = quranVol(), total = q ? q.v.pages : 569;
+    var seen = {};
+    H.plan.forEach(function (e) { if (e.done) for (var p = e.from; p <= e.to; p++) seen[p] = 1; });
+    var done = Object.keys(seen).length, pct = Math.min(100, Math.round(100 * done / total));
+    var pr = el("div", "hf-prog");
+    pr.appendChild(el("div", "hf-pt", "تقدّمك: " + done + " من " + total + " صفحة (" + pct + "%)"));
+    var bar = el("div", "hf-bar"), fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill); pr.appendChild(bar);
+    viewEl.appendChild(pr);
+
+    // نموذج الإضافة
+    var f = el("div", "hf-form");
+    f.appendChild(el("div", "hf-h", "➕ أضف مقرراً إلى جدولك"));
+    var dt = el("input", "hf-in"); dt.type = "date"; dt.value = todayStr();
+    var sel = el("select", "hf-in");
+    var o0 = el("option", null, "اختر سورة (اختياري)"); o0.value = ""; sel.appendChild(o0);
+    if (q) q.v.toc.forEach(function (t) { var o = el("option", null, t.t); o.value = t.p; sel.appendChild(o); });
+    var fr = el("input", "hf-in"); fr.type = "number"; fr.min = 1; fr.max = total; fr.placeholder = "من صفحة";
+    var to = el("input", "hf-in"); to.type = "number"; to.min = 1; to.max = total; to.placeholder = "إلى صفحة";
+    var nt = el("input", "hf-in"); nt.type = "text"; nt.placeholder = "ملاحظة (اختياري)";
+    sel.onchange = function () { if (sel.value) { fr.value = sel.value; if (!to.value) to.value = sel.value; } };
+    var add = el("button", "chip hf-yes", "إضافة");
+    add.onclick = function () {
+      var a = parseInt(fr.value, 10), b = parseInt(to.value, 10);
+      if (!dt.value) { alert("اختر التاريخ."); return; }
+      if (!(a >= 1 && b >= a && b <= total)) { alert("اكتب الصفحات بشكل صحيح: من ≤ إلى، وضمن 1–" + total + "."); return; }
+      H.plan.push({ id: Date.now(), d: dt.value, from: a, to: b, note: nt.value.trim(), done: false });
+      hfSet(H); render();
+    };
+    [dt, sel, fr, to, nt, add].forEach(function (x) { f.appendChild(x); });
+    viewEl.appendChild(f);
+
+    // الجدول
+    viewEl.appendChild(el("div", "fsec", "📅 جدولك (" + H.plan.length + ")"));
+    if (!H.plan.length) viewEl.appendChild(el("div", "favempty", "ما عندك مقررات بعد. أضف أول مقرر من الأعلى."));
+    var tdy = todayStr();
+    var list = el("div", "list");
+    H.plan.slice().sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : a.from - b.from; }).forEach(function (e) {
+      var r = el("div", "hf-row" + (e.done ? " done" : (e.d < tdy ? " late" : (e.d === tdy ? " today" : ""))));
+      var ck = el("button", "hf-ck", e.done ? "✔" : "○");
+      ck.onclick = function () { e.done = !e.done; hfSet(H); render(); };
+      var mid = el("div", "hf-mid");
+      mid.appendChild(el("div", "hf-t", "صفحة " + e.from + (e.to !== e.from ? " – " + e.to : "") + (surahAt(e.from) ? " (" + surahAt(e.from) + ")" : "")));
+      mid.appendChild(el("div", "hf-s", e.d + (e.d === tdy ? " · اليوم" : (!e.done && e.d < tdy ? " · متأخر" : "")) + (e.note ? " · " + e.note : "")));
+      var op = el("button", "chip", "📖 فتح"); op.onclick = function () { openQuranAt(e.from); };
+      var dl = el("button", "chip", "🗑"); dl.onclick = function () {
+        if (confirm("حذف هذا المقرر؟")) { H.plan = H.plan.filter(function (x) { return x.id !== e.id; }); hfSet(H); render(); }
+      };
+      [ck, mid, op, dl].forEach(function (x) { r.appendChild(x); });
+      list.appendChild(r);
+    });
+    viewEl.appendChild(list);
   }
 
   /* ---------------- المسبحة ---------------- */
@@ -343,6 +444,12 @@
         lb.onclick = function () { go({ type: "lib" }); };
         grid.appendChild(lb);
       }
+      var hb = el("button", "cat wide");
+      hb.appendChild(el("span", "ic", "🕋"));
+      hb.appendChild(el("span", "nm", "حفظ القرآن"));
+      hb.appendChild(el("span", "ct", "جدولك الخاص"));
+      hb.onclick = function () { go({ type: "hifz" }); };
+      grid.appendChild(hb);
       var fb = el("button", "cat wide fav");
       fb.appendChild(el("span", "ic", "⭐"));
       fb.appendChild(el("span", "nm", "المفضلة"));
