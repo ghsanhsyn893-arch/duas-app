@@ -580,7 +580,12 @@
     var list = el("div", "list");
     var pins = getPins().filter(function (id) { return findBook(id); });
     var ordered = pins.map(findBook).concat(BOOKS.filter(function (b) { return pins.indexOf(b.id) === -1; }));
-    ordered.forEach(function (b) { list.appendChild(bookRow(b)); });
+    var cats = [];
+    ordered.forEach(function (b) { if (!b.cat) list.appendChild(bookRow(b)); else if (cats.indexOf(b.cat) < 0) cats.push(b.cat); });
+    cats.forEach(function (c) {
+      list.appendChild(el("div", "fsec", c));
+      ordered.forEach(function (b) { if (b.cat === c) list.appendChild(bookRow(b)); });
+    });
     if (!BOOKS.length) list.appendChild(el("div", "empty", "لا توجد كتب بعد"));
     viewEl.appendChild(list);
   }
