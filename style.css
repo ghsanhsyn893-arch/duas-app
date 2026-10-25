@@ -168,3 +168,7 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 
 .pinb{font-size:20px;line-height:1;padding:6px 6px;margin:-6px 0;opacity:.28;filter:grayscale(1);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
 .pinb.on{opacity:1;filter:none}
+
+.bnotice{margin:10px 12px;padding:12px 14px;border:1.5px solid var(--gold);border-radius:14px;background:rgba(200,160,60,.12);line-height:1.9;font-size:15px}
+.bnotice .bn-h{font-weight:700;margin-bottom:4px}
+.bnotice .bn-p{margin:4px 0}

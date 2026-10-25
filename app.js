@@ -888,6 +888,10 @@
 
   function openBook(id) {
     var b = findBook(id), p = getPos(id);
+    if (b && b.notice) {
+      var nk = "nt_" + b.id;
+      try { if (!sessionStorage.getItem(nk)) { sessionStorage.setItem(nk, "1"); alert("⚠ تنبيه قبل القراءة\n\n" + b.notice.join("\n\n")); } } catch (e) {}
+    }
     if (b && b.kind === "scan" && p && p.vol) {
       var v = b.volumes.filter(function (x) { return x.id === p.vol; })[0];
       if (v) {
@@ -906,6 +910,12 @@
     titleEl.textContent = book.title;
     var box = el("div");
     box.appendChild(el("div", "volinfo", book.desc || ""));
+    if (book.notice) {
+      var nb = el("div", "bnotice");
+      nb.appendChild(el("div", "bn-h", "⚠ تنبيه قبل القراءة"));
+      book.notice.forEach(function (t) { nb.appendChild(el("div", "bn-p", t)); });
+      box.appendChild(nb);
+    }
     var fr = el("div", "favrow"); fr.appendChild(favChip("books", book.id)); box.appendChild(fr);
     var list = el("div", "list");
     var saved = getPos(book.id);
