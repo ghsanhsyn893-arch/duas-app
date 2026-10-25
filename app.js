@@ -523,6 +523,34 @@
     return { book: best.book, chTitle: best.book.chapters[i].title, pct: best.p.pct || 0 };
   }
 
+  /* ---------------- تثبيت الكتب ---------------- */
+  var MAXPIN = 5;
+  function getPins() {
+    try { var a = JSON.parse(localStorage.getItem("pins") || "[]"); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function togglePin(id) {
+    var p = getPins(), i = p.indexOf(id);
+    if (i >= 0) p.splice(i, 1);
+    else {
+      if (p.length >= MAXPIN) { alert("الحد الأقصى " + MAXPIN + " كتب مثبّتة. أزل تثبيت كتاب أولاً."); return false; }
+      p.push(id);
+    }
+    try { localStorage.setItem("pins", JSON.stringify(p)); } catch (e) {}
+    return true;
+  }
+  function pinBtn(id) {
+    var on = getPins().indexOf(id) !== -1;
+    var b = el("span", "pinb" + (on ? " on" : ""), "📌");
+    b.setAttribute("role", "button");
+    b.setAttribute("aria-label", on ? "إلغاء التثبيت" : "تثبيت الكتاب");
+    b.onclick = function (e) {
+      e.stopPropagation();
+      if (togglePin(id)) render();
+    };
+    return b;
+  }
+
   function bookRow(b, onFav) {
     var btn = el("button", "row book");
     var box = el("span", "bk");
@@ -536,6 +564,7 @@
     cv.src = BASE + "covers/" + b.id + ".jpg";
     btn.appendChild(cv);
     btn.appendChild(box);
+    btn.appendChild(pinBtn(b.id));
     btn.appendChild(favStar("books", b.id, onFav));
     btn.appendChild(el("span", "chev", "‹"));
     btn.onclick = function () { go({ type: "book", id: b.id }); };
@@ -549,7 +578,9 @@
     rb.onclick = function () { checkUpdate(true); };
     viewEl.appendChild(rb);
     var list = el("div", "list");
-    BOOKS.forEach(function (b) { list.appendChild(bookRow(b)); });
+    var pins = getPins().filter(function (id) { return findBook(id); });
+    var ordered = pins.map(findBook).concat(BOOKS.filter(function (b) { return pins.indexOf(b.id) === -1; }));
+    ordered.forEach(function (b) { list.appendChild(bookRow(b)); });
     if (!BOOKS.length) list.appendChild(el("div", "empty", "لا توجد كتب بعد"));
     viewEl.appendChild(list);
   }

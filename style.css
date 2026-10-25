@@ -165,3 +165,6 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .favempty .fe-i{font-size:46px;color:var(--gold);line-height:1}
 .favempty .fe-t{font-size:18px;font-weight:700;color:var(--ink);margin:8px 0 6px}
 .favempty .fe-s{font-size:14px;line-height:1.9}
+
+.pinb{font-size:20px;line-height:1;padding:6px 6px;margin:-6px 0;opacity:.28;filter:grayscale(1);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.pinb.on{opacity:1;filter:none}
