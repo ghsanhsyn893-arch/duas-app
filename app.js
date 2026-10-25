@@ -914,6 +914,10 @@
   function renderVolumes(book) {
     titleEl.textContent = book.title;
     var box = el("div");
+    var bc = el("img", "bigcov"); bc.alt = "";
+    bc.onerror = function () { bc.remove(); };
+    bc.src = BASE + "covers/" + book.id + ".jpg";
+    box.appendChild(bc);
     box.appendChild(el("div", "volinfo", book.desc || ""));
     if (book.notice) {
       var nb = el("div", "bnotice");

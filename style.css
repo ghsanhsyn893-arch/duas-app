@@ -172,3 +172,5 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .bnotice{margin:10px 12px;padding:12px 14px;border:1.5px solid var(--gold);border-radius:14px;background:rgba(200,160,60,.12);line-height:1.9;font-size:15px}
 .bnotice .bn-h{font-weight:700;margin-bottom:4px}
 .bnotice .bn-p{margin:4px 0}
+
+.bigcov{display:block;margin:12px auto 4px;max-height:260px;max-width:70%;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
