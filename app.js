@@ -131,8 +131,8 @@
   function getFavs() {
     try {
       var f = JSON.parse(localStorage.getItem("favs") || "{}") || {};
-      return { books: Array.isArray(f.books) ? f.books : [], items: Array.isArray(f.items) ? f.items : [] };
-    } catch (e) { return { books: [], items: [] }; }
+      return { books: Array.isArray(f.books) ? f.books : [], items: Array.isArray(f.items) ? f.items : [], recs: Array.isArray(f.recs) ? f.recs : [] };
+    } catch (e) { return { books: [], items: [], recs: [] }; }
   }
   function isFav(kind, id) { return getFavs()[kind].indexOf(id) !== -1; }
   function toggleFav(kind, id) {
@@ -144,7 +144,7 @@
   function favCount() {
     var f = getFavs();
     return f.books.filter(function (id) { return findBook(id); }).length +
-           f.items.filter(function (k) { return ITEMS[k]; }).length;
+           f.items.filter(function (k) { return ITEMS[k]; }).length + f.recs.length;
   }
   // نجمة صغيرة داخل الصفوف
   function favStar(kind, id, onChange) {
@@ -214,7 +214,7 @@
     else if (v.type === "vol") renderScan(v);
     else if (v.type === "tasbih") renderTasbih();
     else if (v.type === "hifz") renderHifz();
-    else if (v.type === "listen") renderListen();
+    else if (v.type === "listen") renderListen(v);
   }
 
 
@@ -341,20 +341,25 @@
   }
   function audKey(rid, mid, n) { return "aud:" + rid + ":" + mid + ":" + n; }
   function audGet(rid, mid, n) { return idbDo("readonly", function (s) { return s.get(audKey(rid, mid, n)); }).then(function (x) { return x || null; }, function () { return null; }); }
-  function renderListen() {
+  function renderListen(v) {
     titleEl.textContent = "🎧 الاستماع للقرآن";
     var st = { rec: null, m: null };
     var q = el("input", "search"); q.type = "search"; q.placeholder = "ابحث عن قارئ: عبد الباسط، الحصري، المنشاوي...";
     try { q.value = localStorage.getItem("lastrec") || ""; } catch (e) {}
     var box = el("div"); viewEl.appendChild(q); viewEl.appendChild(box);
     var dock = el("div", "auddock"); dock.hidden = true;
-    audioEl = audioEl || new Audio();
-    var cur = el("div", "audcur", ""); var ctl = document.createElement("audio"); ctl.controls = true; ctl.style.width = "100%";
+    audioEl = audioEl || document.createElement("audio");
+    var ctl = audioEl; ctl.controls = true; ctl.style.width = "100%";
+    var cur = el("div", "audcur", ctl._title || "");
     dock.appendChild(cur); dock.appendChild(ctl); viewEl.appendChild(dock);
-    ctl.onended = function () { if (st.next) st.next(); };
+    if (ctl.src) dock.hidden = false;
+    function hold(on) { try { if (window.NativeAudio && NativeAudio.hold) NativeAudio.hold(!!on); } catch (e) {} }
+    ctl.onplay = function () { hold(true); };
+    ctl.onpause = function () { hold(false); };
+    ctl.onended = function () { hold(false); if (st.next) st.next(); };
     function play(n, blobUrl) {
       var src = blobUrl || (st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3");
-      ctl.src = src; dock.hidden = false; cur.textContent = "سورة " + SURAHS[n - 1] + " — " + st.rec.name;
+      ctl.src = src; dock.hidden = false; cur.textContent = ctl._title = "سورة " + SURAHS[n - 1] + " — " + st.rec.name;
       var p = ctl.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
       st.next = function () {
         var i = st.m.l.indexOf(n); if (i >= 0 && i + 1 < st.m.l.length) startSurah(st.m.l[i + 1]);
@@ -367,7 +372,8 @@
       box.textContent = "";
       var back = el("button", "chip", "← القرّاء"); back.onclick = function () { st.rec = null; draw(); };
       box.appendChild(back);
-      box.appendChild(el("div", "fsec", st.rec.name + (st.m.n ? " — " + st.m.n : "")));
+      var hrow = el("div", "favrow"); hrow.appendChild(el("span", "fsec", st.rec.name + (st.m.n ? " — " + st.m.n : "")));
+      hrow.appendChild(favStar("recs", st.rec.id, function () {})); box.appendChild(hrow);
       if (st.rec.m.length > 1) {
         var sel = el("select", "hf-in");
         st.rec.m.forEach(function (m, i) { var o = el("option", null, m.n || ("رواية " + (i + 1))); o.value = i; if (m === st.m) o.selected = true; sel.appendChild(o); });
@@ -384,15 +390,30 @@
           dl.textContent = bl ? "🗑 حذف التنزيل" : "⬇ تنزيل";
           dl.onclick = bl ? function () { idbDo("readwrite", function (s) { return s.delete(audKey(st.rec.id, st.m.id, n)); }).then(paint); } : download;
         }); }
+        var bar = el("span", "dlbar"); var fill = el("i"); bar.appendChild(fill); bar.hidden = true;
+        mid.appendChild(bar);
         function download() {
           if (!confirm("تنزيل سورة " + SURAHS[n - 1] + "؟ قد يكون حجمها كبيراً (حسب طولها). يفضّل واي فاي.")) return;
-          dl.disabled = true; dl.textContent = "جاري التنزيل…";
+          dl.disabled = true; dl.textContent = "0%"; fill.style.width = "0%"; bar.hidden = false;
           fetch(st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3").then(function (r) {
-            if (!r.ok) throw new Error("http " + r.status); return r.blob();
+            if (!r.ok) throw new Error("http " + r.status);
+            var total = parseInt(r.headers.get("content-length") || "0", 10), got = 0, chunks = [];
+            if (!r.body || !r.body.getReader) return r.blob();
+            var rd = r.body.getReader();
+            function pump() {
+              return rd.read().then(function (x) {
+                if (x.done) return new Blob(chunks, { type: "audio/mpeg" });
+                chunks.push(x.value); got += x.value.length;
+                if (total) { var p = Math.min(100, Math.round(100 * got / total)); fill.style.width = p + "%"; dl.textContent = p + "%"; }
+                else dl.textContent = (got / 1048576).toFixed(1) + " MB";
+                return pump();
+              });
+            }
+            return pump();
           }).then(function (bl) {
             return idbDo("readwrite", function (s) { return s.put(bl, audKey(st.rec.id, st.m.id, n)); });
           }).then(function () { toast("تم التنزيل"); }, function (e) { toast("تعذّر التنزيل: " + (e && e.message || e)); })
-            .then(function () { dl.disabled = false; paint(); });
+            .then(function () { dl.disabled = false; bar.hidden = true; paint(); });
         }
         paint();
         [pl, mid, dl].forEach(function (x) { r.appendChild(x); }); list.appendChild(r);
@@ -405,11 +426,17 @@
       loadReciters().then(function (recs) {
         box.textContent = "";
         var t = norm(q.value.trim());
-        var m = recs.filter(function (r) { return !t || norm(r.name).indexOf(t) !== -1; }).slice(0, 40);
+        var m = recs.filter(function (r) { return !t || norm(r.name).indexOf(t) !== -1; });
+        m = m.filter(function (r) { return isFav("recs", r.id); }).concat(m.filter(function (r) { return !isFav("recs", r.id); })).slice(0, 40);
+        if (v && v.rec && !st.rec) {
+          var pre = recs.filter(function (r) { return r.id === v.rec; })[0];
+          if (pre) { st.rec = pre; st.m = pre.m[0]; v.rec = null; drawSurahs(); return; }
+        }
         if (!m.length) { box.appendChild(el("div", "empty", "ما لقينا قارئ بهذا الاسم")); return; }
         var list = el("div", "list");
         m.forEach(function (r) {
-          var b = el("button", "row"); b.appendChild(el("span", null, r.name)); b.appendChild(el("span", "chev", "‹"));
+          var b = el("button", "row"); b.appendChild(el("span", null, r.name));
+          b.appendChild(favStar("recs", r.id, function () { draw(); })); b.appendChild(el("span", "chev", "‹"));
           b.onclick = function () { st.rec = r; st.m = r.m[0]; try { localStorage.setItem("lastrec", q.value); } catch (e) {} drawSurahs(); };
           list.appendChild(b);
         });
@@ -820,7 +847,8 @@
     var f = getFavs();
     var bks = f.books.map(findBook).filter(Boolean);
     var its = f.items.filter(function (k) { return ITEMS[k]; });
-    if (!bks.length && !its.length) {
+    var recsF = f.recs || [];
+    if (!bks.length && !its.length && !recsF.length) {
       var em = el("div", "favempty");
       em.appendChild(el("div", "fe-i", "☆"));
       em.appendChild(el("div", "fe-t", "ما عندك شيء بالمفضلة بعد"));
@@ -833,6 +861,19 @@
       var l1 = el("div", "list");
       bks.forEach(function (b) { l1.appendChild(bookRow(b, function () { render(); })); });
       viewEl.appendChild(l1);
+    }
+    if (recsF.length) {
+      viewEl.appendChild(el("div", "fsec", "🎧 القرّاء المفضلون (" + recsF.length + ")"));
+      var l3 = el("div", "list"); viewEl.appendChild(l3);
+      loadReciters().then(function (all) {
+        recsF.forEach(function (id) {
+          var r = all.filter(function (x) { return x.id === id; })[0]; if (!r) return;
+          var b = el("button", "row"); b.appendChild(el("span", null, r.name));
+          b.appendChild(favStar("recs", id, function () { render(); })); b.appendChild(el("span", "chev", "‹"));
+          b.onclick = function () { go({ type: "listen", rec: id }); };
+          l3.appendChild(b);
+        });
+      }, function () { l3.appendChild(el("div", "empty", "تعذّر تحميل القرّاء (تحقق من الإنترنت).")); });
     }
     if (its.length) {
       viewEl.appendChild(el("div", "fsec", "📜 أدعية وزيارات (" + its.length + ")"));
