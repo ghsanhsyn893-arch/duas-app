@@ -214,6 +214,7 @@
     else if (v.type === "vol") renderScan(v);
     else if (v.type === "tasbih") renderTasbih();
     else if (v.type === "hifz") renderHifz();
+    else if (v.type === "listen") renderListen();
   }
 
 
@@ -314,6 +315,112 @@
       list.appendChild(r);
     });
     viewEl.appendChild(list);
+  }
+
+
+  /* ---------------- الاستماع للقرآن ---------------- */
+  var SURAHS = "الفاتحة|البقرة|آل عمران|النساء|المائدة|الأنعام|الأعراف|الأنفال|التوبة|يونس|هود|يوسف|الرعد|إبراهيم|الحجر|النحل|الإسراء|الكهف|مريم|طه|الأنبياء|الحج|المؤمنون|النور|الفرقان|الشعراء|النمل|القصص|العنكبوت|الروم|لقمان|السجدة|الأحزاب|سبأ|فاطر|يس|الصافات|ص|الزمر|غافر|فصلت|الشورى|الزخرف|الدخان|الجاثية|الأحقاف|محمد|الفتح|الحجرات|ق|الذاريات|الطور|النجم|القمر|الرحمن|الواقعة|الحديد|المجادلة|الحشر|الممتحنة|الصف|الجمعة|المنافقون|التغابن|الطلاق|التحريم|الملك|القلم|الحاقة|المعارج|نوح|الجن|المزمل|المدثر|القيامة|الإنسان|المرسلات|النبأ|النازعات|عبس|التكوير|الانفطار|المطففين|الانشقاق|البروج|الطارق|الأعلى|الغاشية|الفجر|البلد|الشمس|الليل|الضحى|الشرح|التين|العلق|القدر|البينة|الزلزلة|العاديات|القارعة|التكاثر|العصر|الهمزة|الفيل|قريش|الماعون|الكوثر|الكافرون|النصر|المسد|الإخلاص|الفلق|الناس".split("|");
+  var recCache = null, audioEl = null;
+  function pad3(n) { return (n < 10 ? "00" : n < 100 ? "0" : "") + n; }
+  function loadReciters() {
+    if (recCache) return Promise.resolve(recCache);
+    try { var c = JSON.parse(localStorage.getItem("recs") || "null"); if (c && c.length) { recCache = c; return Promise.resolve(c); } } catch (e) {}
+    return fetch("https://mp3quran.net/api/v3/reciters?language=ar").then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status); return r.json();
+    }).then(function (j) {
+      var out = (j.reciters || []).map(function (r) {
+        return { id: r.id, name: r.name, m: (r.moshaf || []).map(function (m) {
+          return { id: m.id, n: m.name, s: m.server, l: String(m.surah_list || "").split(",").map(Number).filter(Boolean) };
+        }).filter(function (m) { return m.s && m.l.length; }) };
+      }).filter(function (r) { return r.m.length; });
+      if (!out.length) throw new Error("empty");
+      recCache = out;
+      try { localStorage.setItem("recs", JSON.stringify(out)); } catch (e) {}
+      return out;
+    });
+  }
+  function audKey(rid, mid, n) { return "aud:" + rid + ":" + mid + ":" + n; }
+  function audGet(rid, mid, n) { return idbDo("readonly", function (s) { return s.get(audKey(rid, mid, n)); }).then(function (x) { return x || null; }, function () { return null; }); }
+  function renderListen() {
+    titleEl.textContent = "🎧 الاستماع للقرآن";
+    var st = { rec: null, m: null };
+    var q = el("input", "search"); q.type = "search"; q.placeholder = "ابحث عن قارئ: عبد الباسط، الحصري، المنشاوي...";
+    try { q.value = localStorage.getItem("lastrec") || ""; } catch (e) {}
+    var box = el("div"); viewEl.appendChild(q); viewEl.appendChild(box);
+    var dock = el("div", "auddock"); dock.hidden = true;
+    audioEl = audioEl || new Audio();
+    var cur = el("div", "audcur", ""); var ctl = document.createElement("audio"); ctl.controls = true; ctl.style.width = "100%";
+    dock.appendChild(cur); dock.appendChild(ctl); viewEl.appendChild(dock);
+    ctl.onended = function () { if (st.next) st.next(); };
+    function play(n, blobUrl) {
+      var src = blobUrl || (st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3");
+      ctl.src = src; dock.hidden = false; cur.textContent = "سورة " + SURAHS[n - 1] + " — " + st.rec.name;
+      var p = ctl.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
+      st.next = function () {
+        var i = st.m.l.indexOf(n); if (i >= 0 && i + 1 < st.m.l.length) startSurah(st.m.l[i + 1]);
+      };
+    }
+    function startSurah(n) {
+      audGet(st.rec.id, st.m.id, n).then(function (bl) { play(n, bl ? URL.createObjectURL(bl) : null); });
+    }
+    function drawSurahs() {
+      box.textContent = "";
+      var back = el("button", "chip", "← القرّاء"); back.onclick = function () { st.rec = null; draw(); };
+      box.appendChild(back);
+      box.appendChild(el("div", "fsec", st.rec.name + (st.m.n ? " — " + st.m.n : "")));
+      if (st.rec.m.length > 1) {
+        var sel = el("select", "hf-in");
+        st.rec.m.forEach(function (m, i) { var o = el("option", null, m.n || ("رواية " + (i + 1))); o.value = i; if (m === st.m) o.selected = true; sel.appendChild(o); });
+        sel.onchange = function () { st.m = st.rec.m[+sel.value]; drawSurahs(); };
+        box.appendChild(sel);
+      }
+      var list = el("div", "list");
+      st.m.l.forEach(function (n) {
+        var r = el("div", "hf-row");
+        var pl = el("button", "chip hf-yes", "▶"); pl.onclick = function () { startSurah(n); };
+        var mid = el("div", "hf-mid"); mid.appendChild(el("div", "hf-t", n + ". سورة " + (SURAHS[n - 1] || "")));
+        var dl = el("button", "chip", "⬇ تنزيل");
+        function paint() { audGet(st.rec.id, st.m.id, n).then(function (bl) {
+          dl.textContent = bl ? "🗑 حذف التنزيل" : "⬇ تنزيل";
+          dl.onclick = bl ? function () { idbDo("readwrite", function (s) { return s.delete(audKey(st.rec.id, st.m.id, n)); }).then(paint); } : download;
+        }); }
+        function download() {
+          if (!confirm("تنزيل سورة " + SURAHS[n - 1] + "؟ قد يكون حجمها كبيراً (حسب طولها). يفضّل واي فاي.")) return;
+          dl.disabled = true; dl.textContent = "جاري التنزيل…";
+          fetch(st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3").then(function (r) {
+            if (!r.ok) throw new Error("http " + r.status); return r.blob();
+          }).then(function (bl) {
+            return idbDo("readwrite", function (s) { return s.put(bl, audKey(st.rec.id, st.m.id, n)); });
+          }).then(function () { toast("تم التنزيل"); }, function (e) { toast("تعذّر التنزيل: " + (e && e.message || e)); })
+            .then(function () { dl.disabled = false; paint(); });
+        }
+        paint();
+        [pl, mid, dl].forEach(function (x) { r.appendChild(x); }); list.appendChild(r);
+      });
+      box.appendChild(list);
+    }
+    function draw() {
+      box.textContent = "";
+      box.appendChild(el("div", "empty", "جاري تحميل قائمة القرّاء…"));
+      loadReciters().then(function (recs) {
+        box.textContent = "";
+        var t = norm(q.value.trim());
+        var m = recs.filter(function (r) { return !t || norm(r.name).indexOf(t) !== -1; }).slice(0, 40);
+        if (!m.length) { box.appendChild(el("div", "empty", "ما لقينا قارئ بهذا الاسم")); return; }
+        var list = el("div", "list");
+        m.forEach(function (r) {
+          var b = el("button", "row"); b.appendChild(el("span", null, r.name)); b.appendChild(el("span", "chev", "‹"));
+          b.onclick = function () { st.rec = r; st.m = r.m[0]; try { localStorage.setItem("lastrec", q.value); } catch (e) {} drawSurahs(); };
+          list.appendChild(b);
+        });
+        box.appendChild(list);
+      }, function (e) {
+        box.textContent = "";
+        box.appendChild(el("div", "empty", "تعذّر تحميل قائمة القرّاء (" + (e && e.message || e) + "). تحقق من الإنترنت وجرّب مرة ثانية."));
+      });
+    }
+    q.addEventListener("input", function () { if (!st.rec) draw(); });
+    draw();
   }
 
   /* ---------------- المسبحة ---------------- */
@@ -450,6 +557,12 @@
       hb.appendChild(el("span", "ct", "جدولك الخاص"));
       hb.onclick = function () { go({ type: "hifz" }); };
       grid.appendChild(hb);
+      var ab = el("button", "cat wide");
+      ab.appendChild(el("span", "ic", "🎧"));
+      ab.appendChild(el("span", "nm", "الاستماع للقرآن"));
+      ab.appendChild(el("span", "ct", "تلاوات القرّاء"));
+      ab.onclick = function () { go({ type: "listen" }); };
+      grid.appendChild(ab);
       var fb = el("button", "cat wide fav");
       fb.appendChild(el("span", "ic", "⭐"));
       fb.appendChild(el("span", "nm", "المفضلة"));
@@ -1105,10 +1218,65 @@
     q.placeholder = "اكتب الموضع اللي ما فهمته أو سؤالك (اختياري). اتركه فارغاً لشرح الصفحة كلها.";
     var go = el("button", "chip on", "إرسال لتطبيق الذكاء الاصطناعي");
     box.appendChild(q); box.appendChild(go);
+    var orGo = el("button", "chip on", "✨ اشرح داخل التطبيق (OpenRouter)");
+    var orOut = el("div", "aiout"); orOut.hidden = true;
+    var cfg = el("details", "aicfg");
+    cfg.appendChild(el("summary", null, "⚙ إعداد مفتاح OpenRouter"));
+    var kin = el("input", "hf-in"); kin.type = "password"; kin.placeholder = "مفتاح OpenRouter (sk-or-...)";
+    var min = el("input", "hf-in"); min.type = "text"; min.placeholder = "اسم النموذج (يقبل الصور)";
+    var kv = "", mv = "";
+    try { kv = localStorage.getItem("orkey") || ""; mv = localStorage.getItem("ormodel") || ""; } catch (e) {}
+    kin.value = kv; min.value = mv || "~openai/gpt-latest";
+    var ksv = el("button", "chip", "حفظ");
+    ksv.onclick = function () {
+      try { localStorage.setItem("orkey", kin.value.trim()); localStorage.setItem("ormodel", min.value.trim()); } catch (e) {}
+      toast("تم الحفظ");
+    };
+    cfg.appendChild(kin); cfg.appendChild(min); cfg.appendChild(ksv);
+    cfg.appendChild(el("div", "ainote", "المفتاح يُحفظ على جهازك فقط ولا يُرسل إلا إلى openrouter.ai. لا تشاركه مع أحد. الاستخدام يُحسب على رصيدك في OpenRouter. اختر نموذجاً يدعم الصور."));
+    if (!kv) cfg.open = true;
+    box.appendChild(orGo); box.appendChild(orOut); box.appendChild(cfg);
     box.appendChild(el("div", "ainote", "يفتح قائمة المشاركة: اختر Claude أو Gemini أو أي تطبيق عندك. نص السؤال يُنسخ تلقائياً، الصقه إذا لم يظهر. الشرح آلي وقد يخطئ."));
     panel.appendChild(box);
     sheetEl.appendChild(panel);
     document.body.appendChild(sheetEl);
+    orGo.onclick = function () {
+      var key = "", model = "";
+      try { key = (localStorage.getItem("orkey") || "").trim(); model = (localStorage.getItem("ormodel") || "").trim(); } catch (e) {}
+      if (!key) { cfg.open = true; toast("أدخل المفتاح واحفظه أولاً"); return; }
+      if (!model) model = "~openai/gpt-latest";
+      var text = AI_Q + (q.value.trim() ? "المطلوب تحديداً: " + q.value.trim() : "اشرح الصفحة كلها.");
+      orGo.disabled = true; orOut.hidden = false; orOut.textContent = "جاري الشرح…";
+      idbDo("readonly", function (s) { return s.get(vkey(book, vol) + idx); })
+        .then(function (bl) { if (!bl) throw new Error("nopage"); return blobToJpegBlob(bl); })
+        .then(function (jb) {
+          return new Promise(function (res, rej) {
+            var fr = new FileReader(); fr.onload = function () { res(String(fr.result)); }; fr.onerror = rej; fr.readAsDataURL(jb);
+          });
+        })
+        .then(function (url) {
+          return fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json", "X-OpenRouter-Title": "Adiya wa Ziyarat" },
+            body: JSON.stringify({ model: model, messages: [{ role: "user", content: [
+              { type: "text", text: text }, { type: "image_url", image_url: { url: url } } ] }] })
+          });
+        })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            if (!r.ok) throw new Error((j && j.error && j.error.message) || ("http " + r.status));
+            var m = j && j.choices && j.choices[0] && j.choices[0].message;
+            if (!m || !m.content) throw new Error("لا يوجد رد");
+            return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+          });
+        })
+        .then(function (t) { orOut.textContent = t + "\n\n— شرح آلي وقد يخطئ، راجع أهل العلم."; })
+        .catch(function (e) {
+          var m = String(e && e.message || e);
+          orOut.textContent = m === "nopage" ? "الصفحة غير محمّلة بعد." : "تعذّر الشرح: " + m;
+        })
+        .then(function () { orGo.disabled = false; });
+    };
     go.onclick = function () {
       var text = AI_Q + (q.value.trim() ? "المطلوب تحديداً: " + q.value.trim() : "اشرح الصفحة كلها.");
       try { if (navigator.clipboard) navigator.clipboard.writeText(text); } catch (e) {}

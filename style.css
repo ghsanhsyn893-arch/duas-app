@@ -191,3 +191,10 @@ main{flex:1;padding:14px 14px 28px;max-width:720px;width:100%;margin:0 auto}
 .hf-mid{flex:1;min-width:0}
 .hf-t{font-weight:600}
 .hf-s{font-size:13px;color:var(--muted)}
+
+.aiout{white-space:pre-wrap;line-height:1.9;margin:10px 0;padding:12px;border:1px solid var(--gold);border-radius:12px;max-height:45vh;overflow:auto}
+.aicfg{margin:10px 0}
+.aicfg summary{cursor:pointer;font-weight:600}
+
+.auddock{position:sticky;bottom:0;background:var(--bg,#f5f2ea);border-top:1.5px solid var(--gold);padding:8px 12px;margin-top:10px}
+.audcur{font-weight:600;margin-bottom:6px}
