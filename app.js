@@ -357,6 +357,21 @@
     ctl.onplay = function () { hold(true); };
     ctl.onpause = function () { hold(false); };
     ctl.onended = function () { hold(false); if (st.next) st.next(); };
+    function setMedia(n) {
+      var ms = navigator.mediaSession; if (!ms) return;
+      try {
+        ms.metadata = new MediaMetadata({
+          title: "سورة " + (SURAHS[n - 1] || n), artist: st.rec.name, album: "القرآن الكريم",
+          artwork: [{ src: BASE + "covers/quran.jpg", sizes: "260x366", type: "image/jpeg" }]
+        });
+        ms.setActionHandler("play", function () { ctl.play(); });
+        ms.setActionHandler("pause", function () { ctl.pause(); });
+        ms.setActionHandler("nexttrack", function () { if (st.next) st.next(); });
+        ms.setActionHandler("previoustrack", function () { if (st.prev) st.prev(); });
+        ms.setActionHandler("seekbackward", function () { ctl.currentTime = Math.max(0, ctl.currentTime - 10); });
+        ms.setActionHandler("seekforward", function () { ctl.currentTime = ctl.currentTime + 10; });
+      } catch (e) {}
+    }
     function play(n, blobUrl) {
       var src = blobUrl || (st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3");
       ctl.src = src; dock.hidden = false; cur.textContent = ctl._title = "سورة " + SURAHS[n - 1] + " — " + st.rec.name;
@@ -364,6 +379,10 @@
       st.next = function () {
         var i = st.m.l.indexOf(n); if (i >= 0 && i + 1 < st.m.l.length) startSurah(st.m.l[i + 1]);
       };
+      st.prev = function () {
+        var i = st.m.l.indexOf(n); if (i > 0) startSurah(st.m.l[i - 1]);
+      };
+      setMedia(n);
     }
     function startSurah(n) {
       audGet(st.rec.id, st.m.id, n).then(function (bl) { play(n, bl ? URL.createObjectURL(bl) : null); });
