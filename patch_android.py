@@ -1,8 +1,8 @@
 """يعدّل مشروع الأندرويد بعد `npx cap add android`:
 - يضيف صلاحيات الإشعارات
-- ينسخ أيقونة الإشعار الصغيرة
+- ينسخ أيقونة الإشعار الصغيرة (يبحث عنها في المجلد الحالي أو في scripts/)
 """
-import os, re, shutil, sys
+import os, shutil
 
 manifest = "android/app/src/main/AndroidManifest.xml"
 perms = [
@@ -25,5 +25,11 @@ open(manifest, "w", encoding="utf-8").write(s)
 
 drawable = "android/app/src/main/res/drawable"
 os.makedirs(drawable, exist_ok=True)
-shutil.copy("scripts/ic_stat_dua.xml", os.path.join(drawable, "ic_stat_dua.xml"))
+for cand in ("ic_stat_dua.xml", "scripts/ic_stat_dua.xml"):
+    if os.path.exists(cand):
+        shutil.copy(cand, os.path.join(drawable, "ic_stat_dua.xml"))
+        print("icon copied from", cand)
+        break
+else:
+    print("WARNING: ic_stat_dua.xml not found; skipping icon")
 print("patched OK")
