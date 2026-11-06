@@ -341,48 +341,73 @@
   }
   function audKey(rid, mid, n) { return "aud:" + rid + ":" + mid + ":" + n; }
   function audGet(rid, mid, n) { return idbDo("readonly", function (s) { return s.get(audKey(rid, mid, n)); }).then(function (x) { return x || null; }, function () { return null; }); }
+
+  /* مشغّل عام يبقى يعمل في كل الصفحات */
+  var PL = { a: null, bar: null, t: null, next: null, prev: null };
+  function nativeHold(on) { try { if (window.NativeAudio && NativeAudio.hold) NativeAudio.hold(!!on); } catch (e) {} }
+  function ensurePlayer() {
+    if (PL.a) return;
+    var a = document.createElement("audio"); a.preload = "auto"; a.style.display = "none"; document.body.appendChild(a); PL.a = a;
+    var bar = el("div", "gplayer"); bar.hidden = true;
+    PL.t = el("div", "gp-t");
+    var rng = document.createElement("input"); rng.type = "range"; rng.min = 0; rng.max = 1000; rng.value = 0; rng.className = "gp-r";
+    var row = el("div", "gp-row");
+    var pv = el("button", "gp-b", "⏮"), pp = el("button", "gp-b", "▶"), nx = el("button", "gp-b", "⏭"), x = el("button", "gp-b", "✕");
+    pv.onclick = function () { if (PL.prev) PL.prev(); };
+    nx.onclick = function () { if (PL.next) PL.next(); };
+    pp.onclick = function () { if (a.paused) a.play(); else a.pause(); };
+    x.onclick = function () { a.pause(); a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); };
+    rng.oninput = function () { if (a.duration) a.currentTime = a.duration * rng.value / 1000; };
+    a.ontimeupdate = function () { if (a.duration && !rng.matches(":active")) rng.value = Math.round(1000 * a.currentTime / a.duration); };
+    a.onplay = function () { pp.textContent = "⏸"; nativeHold(true); };
+    a.onpause = function () { pp.textContent = "▶"; nativeHold(false); };
+    a.onended = function () { nativeHold(false); if (PL.next) PL.next(); };
+    [pv, pp, nx, x].forEach(function (b) { row.appendChild(b); });
+    bar.appendChild(PL.t); bar.appendChild(rng); bar.appendChild(row);
+    document.body.appendChild(bar); PL.bar = bar;
+  }
+  function playerLoad(o) {
+    ensurePlayer();
+    var a = PL.a;
+    a.src = o.src; PL.t.textContent = o.title + " — " + o.artist; PL.bar.hidden = false;
+    PL.next = o.next; PL.prev = o.prev;
+    var p = a.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
+    var ms = navigator.mediaSession; if (!ms) return;
+    try {
+      ms.metadata = new MediaMetadata({ title: o.title, artist: o.artist, album: "القرآن الكريم",
+        artwork: [{ src: BASE + "covers/quran.jpg", sizes: "260x366", type: "image/jpeg" }] });
+      ms.setActionHandler("play", function () { a.play(); });
+      ms.setActionHandler("pause", function () { a.pause(); });
+      ms.setActionHandler("nexttrack", function () { if (PL.next) PL.next(); });
+      ms.setActionHandler("previoustrack", function () { if (PL.prev) PL.prev(); });
+      ms.setActionHandler("seekbackward", function () { a.currentTime = Math.max(0, a.currentTime - 10); });
+      ms.setActionHandler("seekforward", function () { a.currentTime = a.currentTime + 10; });
+    } catch (e) {}
+  }
   function renderListen(v) {
     titleEl.textContent = "🎧 الاستماع للقرآن";
     var st = { rec: null, m: null };
     var q = el("input", "search"); q.type = "search"; q.placeholder = "ابحث عن قارئ: عبد الباسط، الحصري، المنشاوي...";
     try { q.value = localStorage.getItem("lastrec") || ""; } catch (e) {}
     var box = el("div"); viewEl.appendChild(q); viewEl.appendChild(box);
-    var dock = el("div", "auddock"); dock.hidden = true;
-    audioEl = audioEl || document.createElement("audio");
-    var ctl = audioEl; ctl.controls = true; ctl.style.width = "100%";
-    var cur = el("div", "audcur", ctl._title || "");
-    dock.appendChild(cur); dock.appendChild(ctl); viewEl.appendChild(dock);
-    if (ctl.src) dock.hidden = false;
-    function hold(on) { try { if (window.NativeAudio && NativeAudio.hold) NativeAudio.hold(!!on); } catch (e) {} }
-    ctl.onplay = function () { hold(true); };
-    ctl.onpause = function () { hold(false); };
-    ctl.onended = function () { hold(false); if (st.next) st.next(); };
-    function setMedia(n) {
-      var ms = navigator.mediaSession; if (!ms) return;
-      try {
-        ms.metadata = new MediaMetadata({
-          title: "سورة " + (SURAHS[n - 1] || n), artist: st.rec.name, album: "القرآن الكريم",
-          artwork: [{ src: BASE + "covers/quran.jpg", sizes: "260x366", type: "image/jpeg" }]
-        });
-        ms.setActionHandler("play", function () { ctl.play(); });
-        ms.setActionHandler("pause", function () { ctl.pause(); });
-        ms.setActionHandler("nexttrack", function () { if (st.next) st.next(); });
-        ms.setActionHandler("previoustrack", function () { if (st.prev) st.prev(); });
-        ms.setActionHandler("seekbackward", function () { ctl.currentTime = Math.max(0, ctl.currentTime - 10); });
-        ms.setActionHandler("seekforward", function () { ctl.currentTime = ctl.currentTime + 10; });
-      } catch (e) {}
-    }
     function play(n, blobUrl) {
       var src = blobUrl || (st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3");
-      ctl.src = src; dock.hidden = false; cur.textContent = ctl._title = "سورة " + SURAHS[n - 1] + " — " + st.rec.name;
-      var p = ctl.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
-      st.next = function () {
-        var i = st.m.l.indexOf(n); if (i >= 0 && i + 1 < st.m.l.length) startSurah(st.m.l[i + 1]);
-      };
-      st.prev = function () {
-        var i = st.m.l.indexOf(n); if (i > 0) startSurah(st.m.l[i - 1]);
-      };
-      setMedia(n);
+      var rec = st.rec, m = st.m;
+      playerLoad({
+        src: src, title: "سورة " + (SURAHS[n - 1] || n), artist: rec.name,
+        next: function () { var k = m.l.indexOf(n); if (k >= 0 && k + 1 < m.l.length) loadSurahOf(rec, m, m.l[k + 1]); },
+        prev: function () { var k = m.l.indexOf(n); if (k > 0) loadSurahOf(rec, m, m.l[k - 1]); }
+      });
+    }
+    function loadSurahOf(rec, m, n) {
+      audGet(rec.id, m.id, n).then(function (bl) {
+        var src = bl ? URL.createObjectURL(bl) : m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3";
+        playerLoad({
+          src: src, title: "سورة " + (SURAHS[n - 1] || n), artist: rec.name,
+          next: function () { var k = m.l.indexOf(n); if (k >= 0 && k + 1 < m.l.length) loadSurahOf(rec, m, m.l[k + 1]); },
+          prev: function () { var k = m.l.indexOf(n); if (k > 0) loadSurahOf(rec, m, m.l[k - 1]); }
+        });
+      });
     }
     function startSurah(n) {
       audGet(st.rec.id, st.m.id, n).then(function (bl) { play(n, bl ? URL.createObjectURL(bl) : null); });
