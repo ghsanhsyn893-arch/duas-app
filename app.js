@@ -7,6 +7,8 @@
   var CATS = DATA.categories;
   var BOOKS = DATA.books || [];
   var VERSION = DATA.version || 1;
+  var OCC = DATA.occasions || [];
+  var MS = parseStarts(DATA.month_starts);
 
   function validData(d) {
     if (!d || typeof d.version !== "number" || !d.items || !Array.isArray(d.categories)) return false;
@@ -17,7 +19,7 @@
     });
   }
   function applyData(d) {
-    DATA = d; ITEMS = d.items; CATS = d.categories; BOOKS = d.books || []; VERSION = d.version;
+    DATA = d; ITEMS = d.items; CATS = d.categories; BOOKS = d.books || []; VERSION = d.version; OCC = d.occasions || []; MS = parseStarts(d.month_starts);
   }
   // آخر نسخة محفوظة من الإنترنت (إن كانت أحدث من المدمجة)
   try {
@@ -215,6 +217,7 @@
     else if (v.type === "tasbih") renderTasbih();
     else if (v.type === "hifz") renderHifz();
     else if (v.type === "listen") renderListen(v);
+    else if (v.type === "cal") renderCal();
   }
 
 
@@ -494,6 +497,126 @@
     draw();
   }
 
+
+  /* ---------------- التقويم الهجري والمناسبات ---------------- */
+  var HM = ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة", "رجب", "شعبان", "شهر رمضان", "شوال", "ذو القعدة", "ذو الحجة"];
+  var WD = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  var hfmt = null;
+  function parseStarts(o) {
+    var out = [];
+    Object.keys(o || {}).forEach(function (k) {
+      var m = /^(\d{4})-(\d{1,2})$/.exec(k), g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(o[k]));
+      if (m && g) out.push({ y: +m[1], m: +m[2], t: new Date(+g[1], +g[2] - 1, +g[3]).getTime() });
+    });
+    out.sort(function (a, b) { return a.t - b.t; });
+    return out;
+  }
+  function hijriFromStarts(date) {
+    if (!MS || !MS.length) return null;
+    var t = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(), best = null;
+    MS.forEach(function (s) { if (s.t <= t) best = s; });
+    if (!best) return null;
+    var diff = Math.round((t - best.t) / 86400000);
+    if (diff <= 29) return { year: best.y, month: best.m, day: diff + 1 };
+    if (diff <= 59) {
+      var m = best.m + 1, y = best.y; if (m > 12) { m = 1; y++; }
+      return { year: y, month: m, day: diff - 29 };
+    }
+    return null;
+  }
+  function hAdj() { try { return parseInt(localStorage.getItem("hijriAdj") || "0", 10) || 0; } catch (e) { return 0; } }
+  function hSet(n) { try { localStorage.setItem("hijriAdj", String(n)); } catch (e) {} }
+  function hijriOf(date) {
+    var fs = hijriFromStarts(date); if (fs) return fs;
+    if (!hfmt) { try { hfmt = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura-nu-latn", { day: "numeric", month: "numeric", year: "numeric" }); } catch (e) { hfmt = null; } }
+    if (!hfmt) return null;
+    var d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + hAdj(), 12), o = {};
+    hfmt.formatToParts(d).forEach(function (p) { if (p.type === "day" || p.type === "month" || p.type === "year") o[p.type] = parseInt(p.value, 10); });
+    return o;
+  }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function occOn(m, d) { return OCC.filter(function (o) { return o.m === m && o.d === d; }); }
+  function firstOfMonth(today, h) { return addDays(today, -(h.day - 1)); }
+  function nextMonthStart(first) {
+    for (var n = 28; n <= 31; n++) { var x = addDays(first, n), hx = hijriOf(x); if (hx && hx.day === 1) return x; }
+    return addDays(first, 30);
+  }
+  function prevMonthStart(first) {
+    for (var n = 28; n <= 31; n++) { var x = addDays(first, -n), hx = hijriOf(x); if (hx && hx.day === 1) return x; }
+    return addDays(first, -30);
+  }
+  function upcoming(today, days) {
+    var out = [];
+    for (var i = 0; i <= days; i++) {
+      var dt = addDays(today, i), h = hijriOf(dt); if (!h) break;
+      occOn(h.month, h.day).forEach(function (o) { out.push({ dt: dt, h: h, o: o, left: i }); });
+    }
+    return out;
+  }
+  function renderCal() {
+    titleEl.textContent = "📅 التقويم والمناسبات";
+    var today = new Date(), th = hijriOf(today);
+    if (!th) { viewEl.appendChild(el("div", "empty", "هذا الجهاز لا يدعم التقويم الهجري.")); return; }
+    var head = el("div", "cal-head");
+    head.appendChild(el("div", "cal-d", WD[today.getDay()] + " " + th.day + " " + HM[th.month - 1] + " " + th.year + "هـ"));
+    head.appendChild(el("div", "cal-g", today.toLocaleDateString("ar-IQ", { day: "numeric", month: "long", year: "numeric" })));
+    var te = occOn(th.month, th.day);
+    te.forEach(function (o) { head.appendChild(el("div", "cal-today " + o.k, "اليوم: " + o.t)); });
+    viewEl.appendChild(head);
+
+    var cur = firstOfMonth(today, th);
+    var adjRow = el("div", "cal-adj");
+    adjRow.appendChild(el("span", null, "ضبط اليوم الهجري (حسب رؤية الهلال):"));
+    var mi = el("button", "chip", "−1"), pl = el("button", "chip", "+1"), val = el("span", "cal-av", (hAdj() > 0 ? "+" : "") + hAdj());
+    mi.onclick = function () { hSet(hAdj() - 1); render(); };
+    pl.onclick = function () { hSet(hAdj() + 1); render(); };
+    adjRow.appendChild(mi); adjRow.appendChild(val); adjRow.appendChild(pl);
+    viewEl.appendChild(adjRow);
+
+    var gridBox = el("div", "cal-box"), detail = el("div", "cal-detail");
+    viewEl.appendChild(gridBox); viewEl.appendChild(detail);
+    function drawMonth() {
+      gridBox.textContent = "";
+      var h1 = hijriOf(cur);
+      var nav = el("div", "cal-nav");
+      var pv = el("button", "chip", "›"), nx = el("button", "chip", "‹");
+      pv.onclick = function () { cur = prevMonthStart(cur); drawMonth(); detail.textContent = ""; };
+      nx.onclick = function () { cur = nextMonthStart(cur); drawMonth(); detail.textContent = ""; };
+      nav.appendChild(pv); nav.appendChild(el("div", "cal-mt", HM[h1.month - 1] + " " + h1.year + "هـ")); nav.appendChild(nx);
+      gridBox.appendChild(nav);
+      var g = el("div", "cal-grid");
+      WD.forEach(function (w) { g.appendChild(el("div", "cal-w", w.slice(0, 3))); });
+      for (var i = 0; i < cur.getDay(); i++) g.appendChild(el("div", "cal-c empty"));
+      var n = nextMonthStart(cur), len = Math.round((n - cur) / 86400000);
+      for (var d = 1; d <= len; d++) (function (d) {
+        var dt = addDays(cur, d - 1), oc = occOn(h1.month, d);
+        var isT = dt.toDateString() === today.toDateString();
+        var c = el("button", "cal-c" + (isT ? " today" : "") + (oc.length ? " has " + oc[0].k : ""));
+        c.appendChild(el("b", null, String(d)));
+        c.appendChild(el("small", null, String(dt.getDate())));
+        c.onclick = function () {
+          detail.textContent = "";
+          detail.appendChild(el("div", "fsec", d + " " + HM[h1.month - 1] + " " + h1.year + "هـ — " + dt.toLocaleDateString("ar-IQ", { day: "numeric", month: "long" })));
+          if (!oc.length) detail.appendChild(el("div", "favempty", "لا توجد مناسبة مسجّلة لهذا اليوم."));
+          oc.forEach(function (o) { detail.appendChild(el("div", "cal-ev " + o.k, o.t)); });
+        };
+        g.appendChild(c);
+      })(d);
+      gridBox.appendChild(g);
+    }
+    drawMonth();
+    var up = upcoming(today, 45);
+    viewEl.appendChild(el("div", "fsec", "⏳ المناسبات القادمة (45 يوماً)"));
+    if (!up.length) viewEl.appendChild(el("div", "favempty", "لا توجد مناسبات قريبة."));
+    up.forEach(function (u) {
+      var r = el("div", "cal-up " + u.o.k);
+      r.appendChild(el("div", "cal-ut", u.o.t));
+      r.appendChild(el("div", "cal-us", u.h.day + " " + HM[u.h.month - 1] + " — " + (u.left === 0 ? "اليوم" : u.left === 1 ? "غداً" : "بعد " + u.left + " يوماً")));
+      viewEl.appendChild(r);
+    });
+    viewEl.appendChild(el("div", "ainote", (DATA.occasions_note || "") + " اليوم الهجري محسوب بالتقويم الفلكي، فاضبطه بـ(−1/+1) ليوافق رؤية الهلال عندكم."));
+  }
+
   /* ---------------- المسبحة ---------------- */
   var TSB = [
     { n: "تسبيح الزهراء (ع)", seq: [["الله أكبر", 34], ["الحمد لله", 33], ["سبحان الله", 33]] },
@@ -628,6 +751,12 @@
       hb.appendChild(el("span", "ct", "جدولك الخاص"));
       hb.onclick = function () { go({ type: "hifz" }); };
       grid.appendChild(hb);
+      var cb = el("button", "cat wide");
+      cb.appendChild(el("span", "ic", "📅"));
+      cb.appendChild(el("span", "nm", "التقويم والمناسبات"));
+      cb.appendChild(el("span", "ct", "هجري"));
+      cb.onclick = function () { go({ type: "cal" }); };
+      grid.appendChild(cb);
       var ab = el("button", "cat wide");
       ab.appendChild(el("span", "ic", "🎧"));
       ab.appendChild(el("span", "nm", "الاستماع للقرآن"));
