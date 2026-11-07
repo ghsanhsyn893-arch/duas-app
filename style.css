@@ -240,3 +240,4 @@ body:has(.gplayer:not([hidden])) #app{padding-bottom:130px}
 .sp-body .spage{margin:0 auto}
 body.sp-v #app{padding-bottom:50vh}
 body.sp-h #app{width:50%;margin-right:0;margin-left:auto}
+.sheet{z-index:60}
