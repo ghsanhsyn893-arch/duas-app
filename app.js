@@ -1083,7 +1083,7 @@
     else if (p && p.pct) box.appendChild(el("span", "bp", "تمت قراءة " + p.pct + "%"));
     var cv = el("img", "bcov"); cv.alt = ""; cv.loading = "lazy";
     cv.onerror = function () { cv.remove(); };
-    cv.src = BASE + "covers/" + b.id + ".jpg";
+    coverSrc(cv, b.id);
     btn.appendChild(cv);
     btn.appendChild(box);
     btn.appendChild(pinBtn(b.id));
@@ -1448,12 +1448,46 @@
     go({ type: "book", id: id });
   }
 
+
+  /* ---------- الأغلفة: تُحفظ بالجهاز فتبقى بدون إنترنت ---------- */
+  var coverSeen = {};
+  function coverFetch(id) {
+    return fetch(BASE + "covers/" + id + ".jpg", { cache: "no-cache" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.blob();
+    }).then(function (bl) {
+      if (!bl || !bl.size) throw new Error("empty");
+      return idbDo("readwrite", function (s) { return s.put(bl, "cover:" + id); }).then(function () { return bl; }, function () { return bl; });
+    });
+  }
+  function coverSrc(img, id) {
+    idbDo("readonly", function (s) { return s.get("cover:" + id); }).then(function (bl) { return bl || null; }, function () { return null; }).then(function (bl) {
+      if (bl) {
+        img.src = URL.createObjectURL(bl);
+        if (!coverSeen[id] && navigator.onLine !== false) { coverSeen[id] = 1; coverFetch(id).catch(function () {}); }
+      } else {
+        coverFetch(id).then(function (b2) { img.src = URL.createObjectURL(b2); }, function () { img.onerror && img.onerror(); });
+      }
+    });
+  }
+  function prefetchCovers() {
+    var list = BOOKS.map(function (b) { return b.id; }), i = 0;
+    (function next() {
+      if (i >= list.length || navigator.onLine === false) return;
+      var id = list[i++];
+      idbDo("readonly", function (s) { return s.get("cover:" + id); }).then(function (bl) {
+        if (bl) return next();
+        coverFetch(id).then(next, next);
+      }, next);
+    })();
+  }
+
   function renderVolumes(book) {
     titleEl.textContent = book.title;
     var box = el("div");
     var bc = el("img", "bigcov"); bc.alt = "";
     bc.onerror = function () { bc.remove(); };
-    bc.src = BASE + "covers/" + book.id + ".jpg";
+    coverSrc(bc, book.id);
     box.appendChild(bc);
     box.appendChild(el("div", "volinfo", book.desc || ""));
     if (book.notice) {
@@ -2010,4 +2044,6 @@
   render();
   setupNative();
   checkUpdate(false);
+  setTimeout(prefetchCovers, 2500);
+  window.addEventListener("online", function () { setTimeout(prefetchCovers, 1000); });
 })();
