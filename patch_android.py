@@ -26,7 +26,10 @@ open(manifest, "w", encoding="utf-8").write(s)
 
 drawable = "android/app/src/main/res/drawable"
 os.makedirs(drawable, exist_ok=True)
-shutil.copy("scripts/ic_stat_dua.xml", os.path.join(drawable, "ic_stat_dua.xml"))
+for _src in ("scripts/ic_stat_dua.xml", "ic_stat_dua.xml", "../ic_stat_dua.xml"):
+    if os.path.exists(_src):
+        shutil.copy(_src, os.path.join(drawable, "ic_stat_dua.xml"))
+        break
 
 # تشغيل الصوت أثناء إطفاء الشاشة: قفل تشغيل جزئي يُفعَّل من الجافاسكربت فقط أثناء التلاوة
 java_dir = "android/app/src/main/java/com/duas/app"
