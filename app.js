@@ -988,8 +988,9 @@
   }
 
   function itemRow(k) {
-    var b = el("button", "row");
-    b.appendChild(el("span", null, ITEMS[k].title));
+    var b = el("button", "row irow");
+    b.appendChild(el("span", "ibadge", "❖"));
+    b.appendChild(el("span", "it", ITEMS[k].title));
     b.appendChild(el("span", "chev", "‹"));
     b.onclick = function () { go({ type: "item", key: k }); };
     return b;
@@ -998,6 +999,11 @@
   function renderCat(v) {
     var c = CATS.filter(function (x) { return x.id === v.id; })[0];
     titleEl.textContent = c.icon + " " + c.name;
+    var hd = el("div", "cathead");
+    hd.appendChild(el("span", "chi", c.icon));
+    hd.appendChild(el("span", "chn", c.name));
+    hd.appendChild(el("span", "chc", c.keys.length + " عنوان"));
+    viewEl.appendChild(hd);
     var list = el("div", "list");
     CATS.filter(function (x) { return x.parent === c.id; }).forEach(function (sc) {
       var b = el("button", "row book");
