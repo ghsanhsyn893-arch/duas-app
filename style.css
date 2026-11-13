@@ -356,3 +356,17 @@ body.np-open{overflow:hidden}
 .np-pp{width:76px;height:76px}.np-pp svg{width:44px;height:44px}
 .np-row2{display:flex;gap:12px;margin-top:auto;padding-top:20px}
 .np-c{border:0;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:15px;padding:10px 20px}
+
+/* تحسينات: المشغّل فوق الشريط، وضوح، مسافات */
+body.has-tabs .gplayer{bottom:calc(env(safe-area-inset-bottom) + 88px);left:12px;right:12px;border:1px solid var(--gold);border-radius:20px;padding:8px 14px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+body.has-tabs:has(.gplayer:not([hidden])) #app{padding-bottom:210px}
+body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset-bottom) + 190px)}
+:root[data-theme="dark"]{--muted:#c3d0c8}
+:root[data-theme="dark"] .row.book .ba,:root[data-theme="dark"] .cat .ct,:root[data-theme="dark"] .set .sub,:root[data-theme="dark"] .note,:root[data-theme="dark"] .hello{color:#cfdbd3}
+:root[data-theme="dark"] .tab{color:#b9c8bf}
+.row.book .ba{font-size:15px}
+.cat .ct{font-size:14px}
+.list{gap:14px}
+.shelf{gap:16px}
+.cat{margin-bottom:2px}
+#app .sec{margin-top:22px;margin-bottom:10px}
