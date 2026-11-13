@@ -487,6 +487,19 @@
 
   /* مشغّل عام يبقى يعمل في كل الصفحات */
   var PL = { a: null, bar: null, t: null, next: null, prev: null };
+  function nativeMedia() {
+    try {
+      if (!(window.NativeAudio && NativeAudio.media) || !PL.a) return;
+      var a = PL.a, src = a.getAttribute("src");
+      NativeAudio.media(src ? (PL.title || "") : "", PL.artist || "", !a.paused, Math.floor(a.currentTime || 0), isFinite(a.duration) ? Math.floor(a.duration) : 0);
+    } catch (e) {}
+  }
+  window.__mc = function (c) {
+    var a = PL.a; if (!a) return;
+    if (c === "play") a.play(); else if (c === "pause") a.pause();
+    else if (c === "next") { if (PL.next) PL.next(); } else if (c === "prev") { if (PL.prev) PL.prev(); }
+    else if (c.indexOf("seek:") === 0) a.currentTime = +c.slice(5);
+  };
   function nativeHold(on) { try { if (window.NativeAudio && NativeAudio.hold) NativeAudio.hold(!!on); } catch (e) {} }
   function ensurePlayer() {
     if (PL.a) return;
@@ -497,14 +510,14 @@
     var prog = el("i", "gp-prog"); var pbox = el("span", "gp-pb"); pbox.appendChild(prog);
     var pp = el("button", "gp-b", "▶"), x = el("button", "gp-b gp-x", "✕");
     pp.onclick = function (e) { e.stopPropagation(); if (a.paused) a.play(); else a.pause(); };
-    x.onclick = function (e) { e.stopPropagation(); a.pause(); a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); closeNP(); };
+    x.onclick = function (e) { e.stopPropagation(); a.pause(); a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); nativeMedia(); closeNP(); };
     bar.onclick = function () { openNP(); };
     PL.pp = pp; PL.prog = prog;
     a.ontimeupdate = function () { syncNP(); };
-    a.onplay = function () { nativeHold(true); syncNP(); };
-    a.onpause = function () { nativeHold(false); syncNP(); };
+    a.onplay = function () { nativeHold(true); nativeMedia(); syncNP(); };
+    a.onpause = function () { nativeHold(false); nativeMedia(); syncNP(); };
     a.onended = function () { nativeHold(false); if (PL.next) PL.next(); };
-    a.onloadedmetadata = function () { syncNP(); };
+    a.onloadedmetadata = function () { nativeMedia(); syncNP(); };
     [thumb, PL.t, pp, x, pbox].forEach(function (b) { bar.appendChild(b); });
     document.body.appendChild(bar); PL.bar = bar;
   }
