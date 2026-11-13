@@ -219,6 +219,43 @@
     else if (v.type === "hifz") renderHifz();
     else if (v.type === "listen") renderListen(v);
     else if (v.type === "cal") renderCal();
+    updateTabs();
+  }
+
+  var TABS = [
+    ["home", "الرئيسية", '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'],
+    ["lib", "المكتبة", '<path d="M4 4h4v16H4zM10 4h4v16h-4zM16.5 5.5l3.5-1 3 14.500-3.500 1z" transform="translate(-1 0)"/>'],
+    ["listen", "الاستماع", '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="7" rx="1.500"/><rect x="17" y="14" width="4" height="7" rx="1.500"/>'],
+    ["favs", "المفضلة", '<path d="M12 3l2.700 5.600 6.100.9-4.400 4.300 1 6.100L12 17l-5.400 2.900 1-6.100L3.200 9.500l6.100-.9z"/>']
+  ];
+  var tabsEl = null;
+  function tabGo(t) {
+    if (sheetEl) closeSheet();
+    if (isReader(stack[stack.length - 1])) savePos();
+    stack = [{ type: "home" }];
+    if (t !== "home") stack.push({ type: t });
+    render(); window.scrollTo(0, 0);
+  }
+  function updateTabs() {
+    var v = stack[stack.length - 1], show = ["home", "lib", "listen", "favs", "cal", "tasbih", "hifz"].indexOf(v.type) >= 0;
+    if (!tabsEl) {
+      tabsEl = el("nav"); tabsEl.id = "tabs";
+      var pill = el("div", "tpill");
+      TABS.forEach(function (t) {
+        var b = el("button", "tab"); b.dataset.t = t[0];
+        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + t[2] + "</svg><span>" + t[1] + "</span>";
+        b.onclick = function () { tabGo(t[0]); };
+        pill.appendChild(b);
+      });
+      var sb = el("button", "tsearch"); sb.setAttribute("aria-label", "بحث");
+      sb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>';
+      sb.onclick = function () { tabGo("home"); var i = document.querySelector(".search"); if (i) i.focus(); };
+      tabsEl.appendChild(pill); tabsEl.appendChild(sb);
+      document.body.appendChild(tabsEl);
+    }
+    tabsEl.hidden = !show;
+    document.body.classList.toggle("has-tabs", show);
+    Array.prototype.forEach.call(tabsEl.querySelectorAll(".tab"), function (b) { b.classList.toggle("on", b.dataset.t === v.type); });
   }
 
 
@@ -822,8 +859,9 @@
         rb.onclick = function () { openBook(last.book.id); };
         box.appendChild(rb);
       }
-      box.appendChild(el("div", "hello", "اختر القسم"));
-      var grid = el("div", "grid");
+      box.appendChild(el("div", "sec", "الأقسام"));
+      var grid = el("div", "shelf");
+      var tools = el("div", "shelf");
       CATS.forEach(function (c) {
         if (c.parent) return;
         var b = el("button", "cat");
@@ -833,45 +871,44 @@
         b.onclick = function () { go({ type: "cat", id: c.id }); };
         grid.appendChild(b);
       });
-      var tb = el("button", "cat wide");
+      var tb = el("button", "cat sm");
       tb.appendChild(el("span", "ic", "📿"));
       tb.appendChild(el("span", "nm", "المسبحة"));
       tb.appendChild(el("span", "ct", "عدّاد التسبيح"));
       tb.onclick = function () { go({ type: "tasbih" }); };
-      grid.appendChild(tb);
+      tools.appendChild(tb);
       if (BOOKS.length) {
         var lb = el("button", "cat wide");
         lb.appendChild(el("span", "ic", "📚"));
         lb.appendChild(el("span", "nm", "المكتبة"));
         lb.appendChild(el("span", "ct", BOOKS.length + " كتاب"));
         lb.onclick = function () { go({ type: "lib" }); };
-        grid.appendChild(lb);
       }
-      var hb = el("button", "cat wide");
+      var hb = el("button", "cat sm");
       hb.appendChild(el("span", "ic", "🕋"));
       hb.appendChild(el("span", "nm", "حفظ القرآن"));
       hb.appendChild(el("span", "ct", "جدولك الخاص"));
       hb.onclick = function () { go({ type: "hifz" }); };
-      grid.appendChild(hb);
-      var cb = el("button", "cat wide");
+      tools.appendChild(hb);
+      var cb = el("button", "cat sm");
       cb.appendChild(el("span", "ic", "📅"));
       cb.appendChild(el("span", "nm", "التقويم والمناسبات"));
       cb.appendChild(el("span", "ct", "هجري"));
       cb.onclick = function () { go({ type: "cal" }); };
-      grid.appendChild(cb);
+      tools.appendChild(cb);
       var ab = el("button", "cat wide");
       ab.appendChild(el("span", "ic", "🎧"));
       ab.appendChild(el("span", "nm", "الاستماع للقرآن"));
       ab.appendChild(el("span", "ct", "تلاوات القرّاء"));
       ab.onclick = function () { go({ type: "listen" }); };
-      grid.appendChild(ab);
       var fb = el("button", "cat wide fav");
       fb.appendChild(el("span", "ic", "⭐"));
       fb.appendChild(el("span", "nm", "المفضلة"));
       fb.appendChild(el("span", "ct", favCount() ? favCount() + " عنصر" : "كتبك وأدعيتك المحفوظة"));
       fb.onclick = function () { go({ type: "favs" }); };
-      grid.appendChild(fb);
       box.appendChild(grid);
+      box.appendChild(el("div", "sec", "أدوات"));
+      box.appendChild(tools);
     }
     search.addEventListener("input", function () { query = search.value; draw(); });
     draw();
