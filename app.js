@@ -872,6 +872,10 @@
   /* ---------------- الرئيسية ---------------- */
   function renderHome() {
     titleEl.textContent = "أدعية وزيارات";
+    var hh = new Date().getHours();
+    var gr = hh < 5 ? "ليلة مباركة" : hh < 12 ? "صباح الخير" : hh < 17 ? "نهارك سعيد" : hh < 20 ? "مساء الخير" : "ليلة مباركة";
+    viewEl.appendChild(el("div", "bigh", gr));
+    viewEl.appendChild(el("div", "bigs", "تقبّل الله أعمالكم"));
     var search = el("input", "search");
     search.type = "search";
     search.placeholder = "ابحث: كميل، عاشوراء، الثقلين...";

@@ -395,3 +395,18 @@ body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset
 .row.irow .it{flex:1;text-align:right;font-weight:700;line-height:1.6}
 .ibadge{flex:none;width:40px;height:40px;line-height:40px;text-align:center;border-radius:50%;color:var(--gold);font-size:20px;
   background:radial-gradient(circle at 30% 25%,rgba(214,169,74,.28),rgba(214,169,74,.08));border:1px solid rgba(214,169,74,.5)}
+
+/* ترحيب كبير */
+.bigh{font-size:34px;font-weight:800;margin:6px 4px 0;color:var(--ink)}
+.bigs{font-size:15px;color:var(--muted);margin:2px 4px 14px}
+/* الوضع الداكن: تدرج أخضر + زجاج */
+:root[data-theme="dark"] body{background:radial-gradient(120% 60% at 50% 0%,#14402f 0%,#0b1f18 45%,#07100c 100%) fixed;color:var(--ink)}
+:root[data-theme="dark"] #app{background:transparent}
+:root[data-theme="dark"] .cat,:root[data-theme="dark"] .row,:root[data-theme="dark"] .set,:root[data-theme="dark"] .card,:root[data-theme="dark"] .search,:root[data-theme="dark"] .gplayer{
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 6px 20px rgba(0,0,0,.28)}
+:root[data-theme="dark"] .gplayer{background:rgba(14,36,28,.85);border-color:rgba(214,169,74,.6)}
+:root[data-theme="dark"] .tpill,:root[data-theme="dark"] .tsearch{background:rgba(12,30,24,.94);border:1px solid rgba(255,255,255,.14)}
+:root[data-theme="dark"] .cat .ic{background:rgba(255,255,255,.08);box-shadow:0 0 16px rgba(214,169,74,.25)}
+:root[data-theme="dark"] .cathead,:root[data-theme="dark"] .resume.daily{background:linear-gradient(135deg,#145a43,#0d3b2c)}
+:root[data-theme="dark"] .bigh{color:#f3e2b3}
