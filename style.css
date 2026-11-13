@@ -370,3 +370,15 @@ body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset
 .shelf{gap:16px}
 .cat{margin-bottom:2px}
 #app .sec{margin-top:22px;margin-bottom:10px}
+
+/* مساحة أمان علوية + نهاية الرفوف + بطاقة اليوم + توهج الأدوات */
+#bar{padding-top:calc(env(safe-area-inset-top) + 10px)}
+.shelf{padding-inline-end:40px;scroll-padding-inline:14px}
+.shelf:after{content:"";flex:0 0 1px}
+.resume.daily{background:linear-gradient(135deg,var(--g1,#0b3b2c),var(--g2,#17694f));border:1px solid var(--gold);margin:6px 0 4px}
+.resume.daily .rn{font-size:20px;margin:4px 0}
+.shelf .cat.sm .ic{box-shadow:0 0 16px rgba(214,169,74,.45);border:1px solid rgba(214,169,74,.5)}
+:root[data-theme="dark"] .shelf .cat.sm .ic{box-shadow:0 0 18px rgba(214,169,74,.35)}
+/* المشغّل: ينزلق عند الظهور */
+@keyframes gpup{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+.gplayer:not([hidden]){animation:gpup .25s ease-out}

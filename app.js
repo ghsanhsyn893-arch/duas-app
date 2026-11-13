@@ -921,6 +921,17 @@
         rb.onclick = function () { openBook(last.book.id); };
         box.appendChild(rb);
       }
+      var dks = Object.keys(ITEMS);
+      if (dks.length && !last) {
+        var dn = Math.floor(Date.now() / 86400000);
+        var dk = dks[dn % dks.length];
+        var dc = el("button", "resume daily");
+        dc.appendChild(el("span", "rt", "✨ من أدعيتنا اليوم"));
+        dc.appendChild(el("span", "rn", ITEMS[dk].title));
+        dc.appendChild(el("span", "rp", "اضغط للقراءة"));
+        dc.onclick = function () { go({ type: "item", key: dk }); };
+        box.appendChild(dc);
+      }
       box.appendChild(el("div", "sec", "الأقسام"));
       var grid = el("div", "shelf");
       var tools = el("div", "shelf");
