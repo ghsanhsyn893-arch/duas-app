@@ -193,6 +193,7 @@
   }
   function isReader(v) { return v.type === "book" || v.type === "vol"; }
   function goBack() {
+    if (document.body.classList.contains("np-open")) { closeNP(); return true; }
     if (sheetEl) { closeSheet(); return true; }
     if (stack.length > 1) {
       if (isReader(stack[stack.length - 1])) savePos();
@@ -491,27 +492,77 @@
     if (PL.a) return;
     var a = document.createElement("audio"); a.preload = "auto"; a.style.display = "none"; document.body.appendChild(a); PL.a = a;
     var bar = el("div", "gplayer"); bar.hidden = true;
+    var thumb = el("img", "gp-img"); thumb.alt = ""; coverSrc(thumb, "quran");
     PL.t = el("div", "gp-t");
-    var rng = document.createElement("input"); rng.type = "range"; rng.min = 0; rng.max = 1000; rng.value = 0; rng.className = "gp-r";
-    var row = el("div", "gp-row");
-    var pv = el("button", "gp-b", "⏮"), pp = el("button", "gp-b", "▶"), nx = el("button", "gp-b", "⏭"), x = el("button", "gp-b", "✕");
+    var prog = el("i", "gp-prog"); var pbox = el("span", "gp-pb"); pbox.appendChild(prog);
+    var pp = el("button", "gp-b", "▶"), x = el("button", "gp-b gp-x", "✕");
+    pp.onclick = function (e) { e.stopPropagation(); if (a.paused) a.play(); else a.pause(); };
+    x.onclick = function (e) { e.stopPropagation(); a.pause(); a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); closeNP(); };
+    bar.onclick = function () { openNP(); };
+    PL.pp = pp; PL.prog = prog;
+    a.ontimeupdate = function () { syncNP(); };
+    a.onplay = function () { nativeHold(true); syncNP(); };
+    a.onpause = function () { nativeHold(false); syncNP(); };
+    a.onended = function () { nativeHold(false); if (PL.next) PL.next(); };
+    a.onloadedmetadata = function () { syncNP(); };
+    [thumb, PL.t, pp, x, pbox].forEach(function (b) { bar.appendChild(b); });
+    document.body.appendChild(bar); PL.bar = bar;
+  }
+  function fmtT(t) { if (!isFinite(t) || t < 0) t = 0; t = Math.floor(t); var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (s < 10 ? "0" : "") + s; }
+  var SPEEDS = [1, 1.25, 1.5, 2, 0.75], SLEEPS = [0, 15, 30, 60], sleepI = 0, sleepTm = null;
+  function svgI(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + "</svg>"; }
+  function buildNP() {
+    if (PL.np) return;
+    var a = PL.a, np = el("div", "np"); np.hidden = true;
+    var top = el("div", "np-top"), cl = el("button", "np-x"); cl.innerHTML = svgI('<path d="M6 9l6 6 6-6"/>'); cl.onclick = closeNP;
+    top.appendChild(cl); top.appendChild(el("span", "np-lbl", "قيد التشغيل"));
+    var img = el("img", "np-cover"); img.alt = ""; coverSrc(img, "quran");
+    var t = el("div", "np-t"), sb = el("div", "np-s");
+    var rng = document.createElement("input"); rng.type = "range"; rng.min = 0; rng.max = 1000; rng.value = 0; rng.className = "np-r";
+    rng.oninput = function () { if (a.duration) a.currentTime = a.duration * rng.value / 1000; };
+    var tm = el("div", "np-times"), t1 = el("span", null, "0:00"), t2 = el("span", null, "-0:00"); tm.appendChild(t1); tm.appendChild(t2);
+    var row = el("div", "np-row");
+    var bk = el("button", "np-b np-sk"); bk.innerHTML = svgI('<path d="M4 12a8 8 0 1 0 3-6.200M4 4v4h4"/>') + "<b>15</b>";
+    var pv = el("button", "np-b"); pv.innerHTML = svgI('<path d="M19 5v14L9 12zM5 5v14"/>');
+    var pp = el("button", "np-b np-pp");
+    var nx = el("button", "np-b"); nx.innerHTML = svgI('<path d="M5 5v14l10-7zM19 5v14"/>');
+    var fw = el("button", "np-b np-sk"); fw.innerHTML = svgI('<path d="M20 12a8 8 0 1 1-3-6.200M20 4v4h-4"/>') + "<b>15</b>";
+    bk.onclick = function () { a.currentTime = Math.max(0, a.currentTime - 15); };
+    fw.onclick = function () { a.currentTime = a.currentTime + 15; };
     pv.onclick = function () { if (PL.prev) PL.prev(); };
     nx.onclick = function () { if (PL.next) PL.next(); };
     pp.onclick = function () { if (a.paused) a.play(); else a.pause(); };
-    x.onclick = function () { a.pause(); a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); };
-    rng.oninput = function () { if (a.duration) a.currentTime = a.duration * rng.value / 1000; };
-    a.ontimeupdate = function () { if (a.duration && !rng.matches(":active")) rng.value = Math.round(1000 * a.currentTime / a.duration); };
-    a.onplay = function () { pp.textContent = "⏸"; nativeHold(true); };
-    a.onpause = function () { pp.textContent = "▶"; nativeHold(false); };
-    a.onended = function () { nativeHold(false); if (PL.next) PL.next(); };
-    [pv, pp, nx, x].forEach(function (b) { row.appendChild(b); });
-    bar.appendChild(PL.t); bar.appendChild(rng); bar.appendChild(row);
-    document.body.appendChild(bar); PL.bar = bar;
+    [bk, pv, pp, nx, fw].forEach(function (b) { row.appendChild(b); });
+    var row2 = el("div", "np-row2");
+    var sp = el("button", "np-c", "1×"), sl = el("button", "np-c", "🌙 إيقاف");
+    sp.onclick = function () { var k = (SPEEDS.indexOf(a.playbackRate) + 1) % SPEEDS.length; a.playbackRate = SPEEDS[k]; sp.textContent = SPEEDS[k] + "×"; };
+    sl.onclick = function () {
+      sleepI = (sleepI + 1) % SLEEPS.length; clearTimeout(sleepTm);
+      if (SLEEPS[sleepI]) { sleepTm = setTimeout(function () { a.pause(); sleepI = 0; sl.textContent = "🌙 إيقاف"; toast("توقّف التشغيل (مؤقّت النوم)"); }, SLEEPS[sleepI] * 60000); sl.textContent = "🌙 " + SLEEPS[sleepI] + " د"; }
+      else sl.textContent = "🌙 إيقاف";
+    };
+    row2.appendChild(sp); row2.appendChild(sl);
+    [top, img, t, sb, rng, tm, row, row2].forEach(function (c) { np.appendChild(c); });
+    document.body.appendChild(np);
+    PL.np = { el: np, t: t, s: sb, r: rng, t1: t1, t2: t2, pp: pp, img: img };
+  }
+  function openNP() { buildNP(); PL.np.el.hidden = false; document.body.classList.add("np-open"); syncNP(); }
+  function closeNP() { if (PL.np) PL.np.el.hidden = true; document.body.classList.remove("np-open"); }
+  function syncNP() {
+    var a = PL.a; if (!a) return;
+    var d = a.duration, pr = d ? a.currentTime / d : 0;
+    if (PL.pp) PL.pp.textContent = a.paused ? "▶" : "⏸";
+    if (PL.prog) PL.prog.style.width = (pr * 100) + "%";
+    var n = PL.np; if (!n) return;
+    n.t.textContent = PL.title || ""; n.s.textContent = PL.artist || "";
+    n.pp.innerHTML = a.paused ? svgI('<path d="M7 4l13 8-13 8z" fill="currentColor"/>') : svgI('<path d="M7 4h4v16H7zM13 4h4v16h-4z" fill="currentColor"/>');
+    if (!n.r.matches(":active")) n.r.value = Math.round(1000 * pr);
+    n.t1.textContent = fmtT(a.currentTime); n.t2.textContent = "-" + fmtT(d ? d - a.currentTime : 0);
   }
   function playerLoad(o) {
     ensurePlayer();
     var a = PL.a;
-    a.src = o.src; PL.t.textContent = o.title + " — " + o.artist; PL.bar.hidden = false;
+    a.src = o.src; PL.title = o.title; PL.artist = o.artist; PL.t.textContent = o.title + " — " + o.artist; PL.bar.hidden = false; syncNP();
     PL.next = o.next; PL.prev = o.prev;
     var p = a.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
     var ms = navigator.mediaSession; if (!ms) return;
@@ -837,7 +888,18 @@
       if (q) {
         var keys = Object.keys(ITEMS).filter(function (k) { return INDEX[k].indexOf(q) !== -1; });
         var bh = BINDEX.filter(function (x) { return x.n.indexOf(q) !== -1; }).slice(0, 30);
-        if (!keys.length && !bh.length) { box.appendChild(el("div", "empty", "ما لقينا نتيجة")); return; }
+        var bks = BOOKS.filter(function (b) {
+          return norm(b.title + " " + (b.author || "") + " " + (b.desc || "")).indexOf(q) !== -1 ||
+            (b.volumes || []).some(function (v) { return norm(v.title || "").indexOf(q) !== -1; });
+        }).slice(0, 12);
+        if (!keys.length && !bh.length && !bks.length) { box.appendChild(el("div", "empty", "ما لقينا نتيجة")); return; }
+        if (bks.length) {
+          box.appendChild(el("div", "sec", "الكتب"));
+          var bl = el("div", "list");
+          bks.forEach(function (b) { bl.appendChild(bookRow(b, function () {})); });
+          box.appendChild(bl);
+          if (keys.length || bh.length) box.appendChild(el("div", "sec", "الأدعية والنصوص"));
+        }
         var list = el("div", "list");
         keys.forEach(function (k) { list.appendChild(itemRow(k)); });
         bh.forEach(function (x) {
