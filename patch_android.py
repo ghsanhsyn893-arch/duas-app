@@ -35,6 +35,54 @@ for _src in ("scripts/ic_stat_dua.xml", "ic_stat_dua.xml", "../ic_stat_dua.xml")
         shutil.copy(_src, os.path.join(drawable, "ic_stat_dua.xml"))
         break
 
+# أيقونة التطبيق من icon-only.png (احتياطي مضمون لو فشلت خطوة توليد الأيقونات)
+def make_icons():
+    src = None
+    for c in ("icon-only.png", "assets/icon-only.png", "../icon-only.png"):
+        if os.path.exists(c):
+            src = c
+            break
+    if not src:
+        print("icon-only.png not found")
+        return
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:
+        import subprocess
+        subprocess.call([sys.executable, "-m", "pip", "install", "--break-system-packages", "-q", "pillow"])
+        from PIL import Image, ImageDraw
+    im = Image.open(src).convert("RGBA")
+    w, h = im.size
+    m = min(w, h)
+    im = im.crop(((w - m) // 2, (h - m) // 2, (w - m) // 2 + m, (h - m) // 2 + m))
+    res = "android/app/src/main/res"
+    legacy = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
+    for dens, px in legacy.items():
+        d = os.path.join(res, "mipmap-" + dens)
+        os.makedirs(d, exist_ok=True)
+        sq = im.resize((px, px), Image.LANCZOS)
+        sq.save(os.path.join(d, "ic_launcher.png"))
+        mask = Image.new("L", (px * 4, px * 4), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, px * 4 - 1, px * 4 - 1), fill=255)
+        mask = mask.resize((px, px), Image.LANCZOS)
+        rd = Image.new("RGBA", (px, px), (0, 0, 0, 0))
+        rd.paste(sq, (0, 0), mask)
+        rd.save(os.path.join(d, "ic_launcher_round.png"))
+        fpx = px * 108 // 48
+        inner = int(fpx * 0.62)
+        fg = Image.new("RGBA", (fpx, fpx), (0, 0, 0, 0))
+        fg.paste(im.resize((inner, inner), Image.LANCZOS), ((fpx - inner) // 2, (fpx - inner) // 2))
+        fg.save(os.path.join(d, "ic_launcher_foreground.png"))
+    os.makedirs(os.path.join(res, "values"), exist_ok=True)
+    open(os.path.join(res, "values", "ic_launcher_background.xml"), "w").write(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0F3D2E</color>\n</resources>\n')
+    print("app icons updated")
+
+try:
+    make_icons()
+except Exception as e:
+    print("icon step skipped:", e)
+
 # غلاف القرآن لإشعار المشغّل
 nodpi = "android/app/src/main/res/drawable-nodpi"
 os.makedirs(nodpi, exist_ok=True)
