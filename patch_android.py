@@ -35,6 +35,14 @@ for _src in ("scripts/ic_stat_dua.xml", "ic_stat_dua.xml", "../ic_stat_dua.xml")
         shutil.copy(_src, os.path.join(drawable, "ic_stat_dua.xml"))
         break
 
+# غلاف القرآن لإشعار المشغّل
+nodpi = "android/app/src/main/res/drawable-nodpi"
+os.makedirs(nodpi, exist_ok=True)
+for _c in ("covers/quran.jpg", "quran.jpg", "../covers/quran.jpg"):
+    if os.path.exists(_c):
+        shutil.copy(_c, os.path.join(nodpi, "quran_cover.jpg"))
+        break
+
 # تشغيل الصوت أثناء إطفاء الشاشة + خدمة مقدّمة لمشغّل الوسائط
 java_dir = "android/app/src/main/java/com/duas/app"
 os.makedirs(java_dir, exist_ok=True)
@@ -132,6 +140,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.Icon;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
@@ -143,6 +153,7 @@ public class AudioService extends Service {
     private static final String CH = "duas_media";
     private static final int NID = 7731;
     private MediaSession ms;
+    private Bitmap cover;
 
     private void cmd(String c) {
         try { sendBroadcast(new Intent(MainActivity.ACT).setPackage(getPackageName()).putExtra("c", c)); } catch (Exception e) { }
@@ -171,6 +182,11 @@ public class AudioService extends Service {
                 @Override public void onSeekTo(long pos) { cmd("seek:" + (pos / 1000)); }
             });
             ms.setActive(true);
+            int cid = getResources().getIdentifier("quran_cover", "drawable", getPackageName());
+            if (cid != 0) {
+                BitmapFactory.Options o = new BitmapFactory.Options(); o.inSampleSize = 2;
+                cover = BitmapFactory.decodeResource(getResources(), cid, o);
+            }
         } catch (Exception e) { }
     }
 
@@ -190,7 +206,8 @@ public class AudioService extends Service {
             ms.setMetadata(new MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, title)
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
-                .putLong(MediaMetadata.METADATA_KEY_DURATION, dur).build());
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, dur)
+                .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, cover).build());
             long acts = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
                 | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO;
             ms.setPlaybackState(new PlaybackState.Builder().setActions(acts)
@@ -200,6 +217,7 @@ public class AudioService extends Service {
         int icon = getResources().getIdentifier("ic_stat_dua", "drawable", getPackageName());
         if (icon == 0) icon = android.R.drawable.ic_media_play;
         Notification.Builder nb = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CH) : new Notification.Builder(this);
+        if (cover != null) nb.setLargeIcon(cover);
         nb.setSmallIcon(icon).setContentTitle(title).setContentText(artist)
             .setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(playing).setOnlyAlertOnce(true)
             .setContentIntent(PendingIntent.getActivity(this, 0,
