@@ -487,7 +487,17 @@
 
   /* مشغّل عام يبقى يعمل في كل الصفحات */
   var PL = { a: null, bar: null, t: null, next: null, prev: null };
+  var askedN = false;
+  function askNotif() {
+    if (askedN) return; askedN = true;
+    try {
+      var ln = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+      if (!ln) return;
+      ln.checkPermissions().then(function (p) { if (p.display !== "granted") ln.requestPermissions(); });
+    } catch (e) {}
+  }
   function nativeMedia() {
+    askNotif();
     try {
       if (!(window.NativeAudio && NativeAudio.media) || !PL.a) return;
       var a = PL.a, src = a.getAttribute("src");
@@ -1137,6 +1147,24 @@
     };
     [plus, minus, cp, sh, im, favChip("items", v.key)].forEach(function (b) { tools.appendChild(b); });
     viewEl.appendChild(tools);
+
+    if (it.audio && it.audio.length) {
+      var ar = el("div", "reader-tools");
+      it.audio.forEach(function (au) {
+        var ab = el("button", "chip on", "🎧 استماع" + (au.by ? " — " + au.by : ""));
+        ab.onclick = function () {
+          playerLoad({ src: au.u, title: it.title, artist: au.by || "تسجيل صوتي" });
+          var a = PL.a, tried = false;
+          a.onerror = function () {
+            if (tried || a.src.indexOf("https://") !== 0) { toast("تعذّر تشغيل الصوت"); return; }
+            tried = true; a.src = a.src.replace("https://", "http://");
+            var p = a.play(); if (p && p.catch) p.catch(function () {});
+          };
+        };
+        ar.appendChild(ab);
+      });
+      viewEl.appendChild(ar);
+    }
 
     var paper = el("article", "paper");
     paper.appendChild(el("h2", null, it.title));
