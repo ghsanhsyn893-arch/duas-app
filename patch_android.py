@@ -112,10 +112,18 @@ def make_icons():
             print(_d, sorted(os.listdir(os.path.join(res, _d))))
     print("app icons updated")
 
-try:
-    make_icons()
-except Exception as e:
-    print("icon step skipped:", e)
+if True:
+    # نعتمد خطوة @capacitor/assets (مثبتة وتعمل بالسجل) بدل Pillow؛ فقط نزيل أيقونة التكيّف الافتراضية
+    print("icons: using @capacitor/assets output; removing Capacitor default adaptive icon")
+    # بدون Pillow: نحذف أيقونة التكيّف الافتراضية (Capacitor) ليستعمل النظام ic_launcher.png
+    # التي تولّدها خطوة @capacitor/assets من icon-only.png بعد هذه الخطوة
+    _res = "android/app/src/main/res"
+    for _f in ("mipmap-anydpi-v26/ic_launcher.xml", "mipmap-anydpi-v26/ic_launcher_round.xml",
+               "drawable-v24/ic_launcher_foreground.xml", "drawable/ic_launcher_background.xml"):
+        _pp = os.path.join(_res, _f)
+        if os.path.exists(_pp):
+            os.remove(_pp)
+            print("removed default:", _f)
 
 # غلاف القرآن لإشعار المشغّل
 nodpi = "android/app/src/main/res/drawable-nodpi"
