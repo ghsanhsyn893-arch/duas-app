@@ -76,6 +76,16 @@ def make_icons():
     os.makedirs(os.path.join(res, "values"), exist_ok=True)
     open(os.path.join(res, "values", "ic_launcher_background.xml"), "w").write(
         '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0F3D2E</color>\n</resources>\n')
+    # أيقونة التكيّف (أندرويد 8+): نكتب ملفات XML صراحةً حتى لا تبقى أيقونة Capacitor الافتراضية
+    ad = os.path.join(res, "mipmap-anydpi-v26")
+    os.makedirs(ad, exist_ok=True)
+    xml = ('<?xml version="1.0" encoding="utf-8"?>\n'
+           '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+           '    <background android:drawable="@color/ic_launcher_background"/>\n'
+           '    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n'
+           '</adaptive-icon>\n')
+    for nm in ("ic_launcher.xml", "ic_launcher_round.xml"):
+        open(os.path.join(ad, nm), "w", encoding="utf-8").write(xml)
     print("app icons updated")
 
 try:
