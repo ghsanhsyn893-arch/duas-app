@@ -86,6 +86,12 @@ def make_icons():
            '</adaptive-icon>\n')
     for nm in ("ic_launcher.xml", "ic_launcher_round.xml"):
         open(os.path.join(ad, nm), "w", encoding="utf-8").write(xml)
+    # نمنع خطوة @capacitor/assets من الكتابة فوق أيقونتنا
+    for _p in ("assets/icon-only.png", "assets/icon-foreground.png", "assets/icon-background.png"):
+        try:
+            os.remove(_p)
+        except Exception:
+            pass
     print("app icons updated")
 
 try:
