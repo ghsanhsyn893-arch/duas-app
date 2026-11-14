@@ -24,6 +24,14 @@ if add:
 # اتجاه RTL
 if "android:supportsRtl" not in s:
     s = s.replace("<application", '<application android:supportsRtl="true"', 1)
+# نضمن ربط الأيقونة صراحةً
+import re as _re
+_m = _re.search(r"<application\b[^>]*>", s)
+if _m:
+    _tag = _m.group(0)
+    _new = _re.sub(r'\sandroid:(icon|roundIcon)="[^"]*"', "", _tag)
+    _new = _new.replace("<application", '<application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"', 1)
+    s = s.replace(_tag, _new, 1)
 if "AudioService" not in s:
     s = s.replace("</application>", '    <service android:name=".AudioService" android:foregroundServiceType="mediaPlayback" android:exported="false" />\n    </application>')
 open(manifest, "w", encoding="utf-8").write(s)
@@ -92,6 +100,16 @@ def make_icons():
             os.remove(_p)
         except Exception:
             pass
+    # نحذف أيقونات Capacitor الافتراضية (vector) حتى لا يبقى أي أثر لها
+    for _v in ("drawable-v24/ic_launcher_foreground.xml", "drawable/ic_launcher_background.xml"):
+        _pp = os.path.join(res, _v)
+        if os.path.exists(_pp):
+            os.remove(_pp)
+            print("removed default:", _v)
+    # تشخيص للسجل
+    for _d in sorted(os.listdir(res)):
+        if _d.startswith("mipmap") or _d.startswith("drawable"):
+            print(_d, sorted(os.listdir(os.path.join(res, _d))))
     print("app icons updated")
 
 try:
@@ -311,4 +329,5 @@ public class AudioService extends Service {
 """
 open(os.path.join(java_dir, "MainActivity.java"), "w", encoding="utf-8").write(MAIN)
 open(os.path.join(java_dir, "AudioService.java"), "w", encoding="utf-8").write(SVC)
+print(open(manifest, encoding="utf-8").read())
 print("patched OK")
