@@ -585,6 +585,7 @@
   function playerLoad(o) {
     ensurePlayer();
     var a = PL.a;
+    a.onerror = null;
     a.src = o.src; PL.title = o.title; PL.artist = o.artist; PL.t.textContent = o.title + " — " + o.artist; PL.bar.hidden = false; syncNP();
     PL.next = o.next; PL.prev = o.prev;
     var p = a.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
@@ -740,7 +741,7 @@
   function hAdj() { try { return parseInt(localStorage.getItem("hijriAdj") || "0", 10) || 0; } catch (e) { return 0; } }
   function hSet(n) { try { localStorage.setItem("hijriAdj", String(n)); } catch (e) {} }
   function hijriOf(date) {
-    var fs = hijriFromStarts(date); if (fs) return fs;
+    var fs = hijriFromStarts(new Date(date.getFullYear(), date.getMonth(), date.getDate() + hAdj())); if (fs) return fs;
     if (!hfmt) { try { hfmt = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura-nu-latn", { day: "numeric", month: "numeric", year: "numeric" }); } catch (e) { hfmt = null; } }
     if (!hfmt) return null;
     var d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + hAdj(), 12), o = {};
@@ -948,6 +949,30 @@
         rb.onclick = function () { openBook(last.book.id); };
         box.appendChild(rb);
       }
+      var hcat = CATS.filter(function (c) { return c.id === "c7"; })[0];
+      var hks = hcat ? hcat.keys.filter(function (k) { return ITEMS[k]; }) : [];
+      if (hks.length) {
+        var hk = hks[Math.floor(Date.now() / 86400000) % hks.length], hi = ITEMS[hk];
+        var hw = el("div", "hday");
+        hw.appendChild(el("div", "hd-h", "🌿 حديث اليوم"));
+        var hbody = el("button", "hd-b");
+        hbody.appendChild(el("div", "hd-t", hi.title));
+        var htx = hi.text.length > 170 ? hi.text.slice(0, 170).replace(/\s+\S*$/, "") + "…" : hi.text;
+        hbody.appendChild(el("div", "hd-x", htx));
+        if (hi.source) hbody.appendChild(el("div", "hd-s", hi.source.length > 90 ? hi.source.slice(0, 90).replace(/\s+\S*$/, "") + "…" : hi.source));
+        hbody.onclick = function () { go({ type: "item", key: hk }); };
+        var hfull = hi.title + "\n\n" + hi.text + (hi.source ? "\n\nالمصدر: " + hi.source : "");
+        var hrow = el("div", "hd-r");
+        var hc = el("button", "chip", "نسخ"), hs = el("button", "chip", "مشاركة");
+        hc.onclick = function () { copyText(hfull); };
+        hs.onclick = function () {
+          if (navigator.share) navigator.share({ title: hi.title, text: hfull }).catch(function () {});
+          else copyText(hfull);
+        };
+        hrow.appendChild(hc); hrow.appendChild(hs);
+        hw.appendChild(hbody); hw.appendChild(hrow);
+        box.appendChild(hw);
+      }
       var dks = Object.keys(ITEMS);
       if (dks.length && !last) {
         var dn = Math.floor(Date.now() / 86400000);
@@ -1153,12 +1178,24 @@
       it.audio.forEach(function (au) {
         var ab = el("button", "chip on", "🎧 استماع" + (au.by ? " — " + au.by : ""));
         ab.onclick = function () {
-          playerLoad({ src: au.u, title: it.title, artist: au.by || "تسجيل صوتي" });
-          var a = PL.a, tried = false;
+          playerLoad({ src: au.u || (BASE + au.f), title: it.title, artist: au.by || "تسجيل صوتي" });
+          var a = PL.a, tried = 0, url = a.src;
           a.onerror = function () {
-            if (tried || a.src.indexOf("https://") !== 0) { toast("تعذّر تشغيل الصوت"); return; }
-            tried = true; a.src = a.src.replace("https://", "http://");
-            var p = a.play(); if (p && p.catch) p.catch(function () {});
+            var code = a.error ? a.error.code : "?";
+            if (tried === 0) {
+              tried = 1;
+              fetch(url).then(function (r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                return r.blob();
+              }).then(function (b) {
+                a.src = URL.createObjectURL(new Blob([b], { type: "audio/mpeg" }));
+                var p = a.play(); if (p && p.catch) p.catch(function () {});
+              }).catch(function (e) {
+                toast("خطأ صوت " + code + " | " + (e && e.message ? e.message : e) + " | " + url.split("/").pop());
+              });
+            } else {
+              toast("خطأ صوت " + code + " | " + url.split("/").pop());
+            }
           };
         };
         ar.appendChild(ab);
