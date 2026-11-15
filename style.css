@@ -455,3 +455,11 @@ body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset
 :root[data-nav="glass"][data-theme="dark"] .tab.on{color:#e5c46b}
 .tab{transition:color .25s ease,transform .25s ease,background .25s ease}
 .tab:active{transform:scale(.92)}
+
+/* ===== لمعة متحركة على الزجاج (transform فقط = خفيفة على الأداء) ===== */
+:root[data-nav="glass"][data-theme] .tpill::before{
+  inset:0 auto 0 -100%;width:300%;
+  background:linear-gradient(115deg,transparent 0%,transparent 40%,rgba(255,255,255,.34) 48%,rgba(255,255,255,.10) 52%,transparent 60%,transparent 100%);
+  will-change:transform;animation:glassSweep 7s ease-in-out infinite}
+@keyframes glassSweep{0%{transform:translateX(-12%)}50%{transform:translateX(38%)}100%{transform:translateX(-12%)}}
+@media (prefers-reduced-motion:reduce){:root[data-nav="glass"][data-theme] .tpill::before{animation:none}}
