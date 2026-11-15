@@ -30,6 +30,7 @@
   /* ---------------- تخزين الإعدادات ---------------- */
   var DEFAULTS = {
     theme: "auto",
+    nav: "normal",
     fs: 22,
     daily: { on: false, time: "08:00" },   // حديث يومي بوقت الشخص
     away: { on: true },                    // تذكير عند الغياب
@@ -108,6 +109,7 @@
       t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     document.documentElement.setAttribute("data-theme", t);
+    document.documentElement.setAttribute("data-nav", cfg.nav === "glass" ? "glass" : "normal");
     var m = document.querySelector('meta[name="theme-color"]');
     if (m) m.setAttribute("content", t === "dark" ? "#0b2a20" : "#0f3d2e");
   }
@@ -2048,6 +2050,13 @@
       themeWrap.appendChild(b);
     });
     look.appendChild(themeWrap);
+    var navWrap = el("div", "reader-tools");
+    [["normal", "عادي"], ["glass", "زجاجي"]].forEach(function (p) {
+      var b = el("button", "chip", (cfg.nav === p[0] ? "✓ " : "") + p[1]);
+      b.onclick = function () { cfg.nav = p[0]; saveCfg(); applyTheme(); render(); };
+      navWrap.appendChild(b);
+    });
+    look.appendChild(row("شكل الشريط السفلي", null, navWrap));
     var rng = document.createElement("input");
     rng.type = "range"; rng.min = 16; rng.max = 40; rng.step = 2; rng.value = cfg.fs;
     rng.oninput = function () { cfg.fs = +rng.value; applyFont(); saveCfg(); };

@@ -419,3 +419,7 @@ body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset
 .hday .hd-s{font-size:15px;line-height:1.7;opacity:.95;margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,162,74,.35);color:var(--gold,#c9a24a)}
 .hday .hd-r{display:flex;gap:8px;margin-top:10px}
 :root:not([data-theme="dark"]) .hday{background:#fffaf0}
+
+html[data-nav="glass"] .tpill{background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
+  -webkit-backdrop-filter:blur(26px) saturate(1.8);backdrop-filter:blur(26px) saturate(1.8);
+  border:1px solid rgba(255,255,255,.28);box-shadow:0 12px 34px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.4),inset 0 -1px 0 rgba(255,255,255,.08)}
