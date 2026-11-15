@@ -31,6 +31,7 @@
   var DEFAULTS = {
     theme: "auto",
     nav: "normal",
+    glass: 45,
     fs: 22,
     daily: { on: false, time: "08:00" },   // حديث يومي بوقت الشخص
     away: { on: true },                    // تذكير عند الغياب
@@ -110,6 +111,7 @@
     }
     document.documentElement.setAttribute("data-theme", t);
     document.documentElement.setAttribute("data-nav", cfg.nav === "glass" ? "glass" : "normal");
+    document.documentElement.style.setProperty("--ga", String(0.15 + Math.max(0, Math.min(100, +cfg.glass || 0)) / 100 * 2.2));
     var m = document.querySelector('meta[name="theme-color"]');
     if (m) m.setAttribute("content", t === "dark" ? "#0b2a20" : "#0f3d2e");
   }
@@ -2057,6 +2059,12 @@
       navWrap.appendChild(b);
     });
     look.appendChild(row("شكل الشريط السفلي", null, navWrap));
+    if (cfg.nav === "glass") {
+      var gr = document.createElement("input");
+      gr.type = "range"; gr.min = 0; gr.max = 100; gr.step = 5; gr.value = cfg.glass;
+      gr.oninput = function () { cfg.glass = +gr.value; applyTheme(); saveCfg(); };
+      look.appendChild(row("شفافية الزجاج", "يسار: شفاف أكثر — يمين: معتم أكثر", gr));
+    }
     var rng = document.createElement("input");
     rng.type = "range"; rng.min = 16; rng.max = 40; rng.step = 2; rng.value = cfg.fs;
     rng.oninput = function () { cfg.fs = +rng.value; applyFont(); saveCfg(); };
