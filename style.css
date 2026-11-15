@@ -416,6 +416,6 @@ body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset
 .hday .hd-b{display:block;width:100%;text-align:right;background:none;border:0;color:inherit;padding:0;font:inherit;cursor:pointer}
 .hday .hd-t{font-size:18px;font-weight:700;margin-bottom:6px}
 .hday .hd-x{font-size:17px;line-height:1.9}
-.hday .hd-s{font-size:12px;opacity:.7;margin-top:6px}
+.hday .hd-s{font-size:15px;line-height:1.7;opacity:.95;margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,162,74,.35);color:var(--gold,#c9a24a)}
 .hday .hd-r{display:flex;gap:8px;margin-top:10px}
 :root:not([data-theme="dark"]) .hday{background:#fffaf0}

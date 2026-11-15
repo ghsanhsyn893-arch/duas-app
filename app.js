@@ -959,7 +959,7 @@
         hbody.appendChild(el("div", "hd-t", hi.title));
         var htx = hi.text.length > 170 ? hi.text.slice(0, 170).replace(/\s+\S*$/, "") + "…" : hi.text;
         hbody.appendChild(el("div", "hd-x", htx));
-        if (hi.source) hbody.appendChild(el("div", "hd-s", hi.source.length > 90 ? hi.source.slice(0, 90).replace(/\s+\S*$/, "") + "…" : hi.source));
+        if (hi.source) hbody.appendChild(el("div", "hd-s", hi.source));
         hbody.onclick = function () { go({ type: "item", key: hk }); };
         var hfull = hi.title + "\n\n" + hi.text + (hi.source ? "\n\nالمصدر: " + hi.source : "");
         var hrow = el("div", "hd-r");
