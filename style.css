@@ -419,7 +419,39 @@ body.has-tabs:has(.gplayer:not([hidden])) #toast{bottom:calc(env(safe-area-inset
 .hday .hd-s{font-size:15px;line-height:1.7;opacity:.95;margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,162,74,.35);color:var(--gold,#c9a24a)}
 .hday .hd-r{display:flex;gap:8px;margin-top:10px}
 :root:not([data-theme="dark"]) .hday{background:#fffaf0}
+/* ===== زجاج سائل (Liquid Glass) ===== */
+:root[data-nav="glass"][data-theme] .tpill,:root[data-nav="glass"][data-theme] .tsearch,:root[data-nav="glass"][data-theme] .gplayer{
+  position:relative;overflow:hidden;
+  background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.07))!important;
+  -webkit-backdrop-filter:blur(22px) saturate(190%) brightness(1.1) contrast(1.05);
+  backdrop-filter:blur(22px) saturate(190%) brightness(1.1) contrast(1.05);
+  border:1px solid rgba(255,255,255,.30)!important;
+  box-shadow:0 10px 32px rgba(0,0,0,.30),
+    inset 1.5px 1.5px 0 rgba(255,255,255,.65),inset -1.5px -1.5px 0 rgba(255,255,255,.22),
+    inset 0 0 22px rgba(255,255,255,.14)!important}
+:root[data-nav="glass"][data-theme] .tpill::before,:root[data-nav="glass"][data-theme] .tsearch::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;
+  background:linear-gradient(120deg,rgba(255,255,255,.38) 0%,rgba(255,255,255,0) 34%,rgba(255,255,255,0) 66%,rgba(255,255,255,.20) 100%)}
+:root[data-nav="glass"][data-theme] .tab,:root[data-nav="glass"][data-theme] .tsearch svg{position:relative;z-index:1}
+:root[data-nav="glass"][data-theme] .tab.on{
+  background:rgba(255,255,255,.22);
+  box-shadow:inset 1px 1px 0 rgba(255,255,255,.6),inset -1px -1px 0 rgba(255,255,255,.18),0 2px 10px rgba(0,0,0,.18)}
+:root[data-nav="glass"][data-theme="dark"] .tab{color:rgba(255,255,255,.85)}
+:root[data-nav="glass"][data-theme="light"] .tpill,:root[data-nav="glass"][data-theme="light"] .tsearch{
+  background:linear-gradient(180deg,rgba(255,255,255,.62),rgba(255,255,255,.30))!important;
+  border-color:rgba(255,255,255,.85)!important;
+  box-shadow:0 10px 30px rgba(15,61,46,.22),inset 1.5px 1.5px 0 rgba(255,255,255,.95),inset -1.5px -1.5px 0 rgba(255,255,255,.5),inset 0 0 20px rgba(255,255,255,.35)!important}
 
-html[data-nav="glass"] .tpill{background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
-  -webkit-backdrop-filter:blur(26px) saturate(1.8);backdrop-filter:blur(26px) saturate(1.8);
-  border:1px solid rgba(255,255,255,.28);box-shadow:0 12px 34px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.4),inset 0 -1px 0 rgba(255,255,255,.08)}
+/* ===== لمسات إضافية للزجاج (هوية خضراء/ذهبية) ===== */
+:root[data-nav="glass"][data-theme] .tpill::after{
+  content:"";position:absolute;top:0;left:12%;width:76%;height:1px;pointer-events:none;z-index:1;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent)}
+:root[data-nav="glass"][data-theme="dark"] .tpill,:root[data-nav="glass"][data-theme="dark"] .tsearch{
+  background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(255,255,255,.03) 45%,rgba(0,0,0,.12)),rgba(8,37,29,.38)!important}
+:root[data-nav="glass"][data-theme] .tab.on{
+  background:linear-gradient(145deg,rgba(230,194,99,.30),rgba(230,194,99,.10));
+  border:1px solid rgba(230,194,99,.32);
+  box-shadow:inset 0 1px 2px rgba(255,255,255,.3),0 4px 14px rgba(0,0,0,.16)}
+:root[data-nav="glass"][data-theme="dark"] .tab.on{color:#e5c46b}
+.tab{transition:color .25s ease,transform .25s ease,background .25s ease}
+.tab:active{transform:scale(.92)}
