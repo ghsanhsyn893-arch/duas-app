@@ -267,7 +267,7 @@
 
   /* ---------------- العرض المزدوج (صفحتان معاً) ---------------- */
   var SPLIT = { el: null, io: null, body: null, b: null, v: null, zoom: 100 };
-  function splitMode() { try { return parseInt(localStorage.getItem("splitMode") || "0", 10) || 0; } catch (e) { return 0; } }
+  function splitMode() { return 0; } /* وضع التقسيم أُلغي */
   function setSplitMode(n) { try { localStorage.setItem("splitMode", String(n)); } catch (e) {} }
   function spCur() {
     if (!SPLIT.body || !SPLIT.v) return 0;
@@ -1877,7 +1877,7 @@
       render();
     };
     pageLbl = el("span", "pglbl", "");
-    [zo, zi, idxb, star, aib, spb, pageLbl].forEach(function (b) { tools.appendChild(b); });
+    [zo, zi, idxb, star, pageLbl].forEach(function (b) { tools.appendChild(b); });
     viewEl.appendChild(tools);
     tools.style.top = ($("bar").offsetHeight - 1) + "px";
 
