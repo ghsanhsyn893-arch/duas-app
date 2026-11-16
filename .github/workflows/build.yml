@@ -8,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KS_B64: ${{ secrets.KS_B64 }}
+      KS_PASS: ${{ secrets.KS_PASS }}
+      KS_ALIAS: ${{ secrets.KS_ALIAS }}
     steps:
       - uses: actions/checkout@v4
 
