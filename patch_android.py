@@ -337,5 +337,59 @@ public class AudioService extends Service {
 """
 open(os.path.join(java_dir, "MainActivity.java"), "w", encoding="utf-8").write(MAIN)
 open(os.path.join(java_dir, "AudioService.java"), "w", encoding="utf-8").write(SVC)
+
+# ---- توقيع ثابت (مفتاح من أسرار GitHub). إذا ما موجود يبقى التوقيع الافتراضي ----
+def apply_signing():
+    import base64
+    b64 = os.environ.get("KS_B64", "").strip()
+    if not b64 or not os.environ.get("KS_PASS"):
+        print("signing: KS_B64/KS_PASS not set -> default debug key (updates will NOT be compatible)")
+        return
+    appdir = os.path.join("android", "app")
+    with open(os.path.join(appdir, "duas.jks"), "wb") as f:
+        f.write(base64.b64decode(b64))
+    gp = os.path.join(appdir, "build.gradle")
+    g = open(gp, encoding="utf-8").read()
+    if "signingConfigs.duas" in g:
+        print("signing: already patched")
+        return
+    sc = (
+        "    signingConfigs {\n"
+        "        duas {\n"
+        "            storeFile file(\"duas.jks\")\n"
+        "            storePassword System.getenv(\"KS_PASS\")\n"
+        "            keyAlias System.getenv(\"KS_ALIAS\") ?: \"duas\"\n"
+        "            keyPassword System.getenv(\"KS_PASS\")\n"
+        "        }\n"
+        "    }\n"
+    )
+    g, n1 = re.subn(r"(^android\s*\{[^\n]*\n)", lambda m: m.group(1) + sc, g, count=1, flags=re.M)
+    g, n2 = re.subn(r"(^\s*buildTypes\s*\{[^\n]*\n)", lambda m: m.group(1) + "        debug { signingConfig signingConfigs.duas }\n", g, count=1, flags=re.M)
+    if n1 != 1 or n2 != 1:
+        print("signing: FAILED to patch build.gradle", n1, n2)
+        sys.exit(1)
+    open(gp, "w", encoding="utf-8").write(g)
+    print("signing: fixed keystore applied")
+
+# ---- رقم الإصدار يزيد تلقائياً مع كل بناء (حتى المتاجر تقبله كتحديث) ----
+def apply_version():
+    n = os.environ.get("GITHUB_RUN_NUMBER", "").strip()
+    if not n.isdigit():
+        print("version: GITHUB_RUN_NUMBER missing -> keeping default")
+        return
+    gp = os.path.join("android", "app", "build.gradle")
+    g = open(gp, encoding="utf-8").read()
+    g, a = re.subn(r"versionCode\s+\d+", "versionCode " + n, g, count=1)
+    g, b = re.subn(r'versionName\s+"[^"]*"', 'versionName "1.0.' + n + '"', g, count=1)
+    if a != 1 or b != 1:
+        print("version: FAILED to patch", a, b)
+        sys.exit(1)
+    open(gp, "w", encoding="utf-8").write(g)
+    print("version: code", n, "name 1.0." + n)
+
+apply_version()
+
+apply_signing()
+
 print(open(manifest, encoding="utf-8").read())
 print("patched OK")
