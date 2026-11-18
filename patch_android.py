@@ -193,6 +193,12 @@ public class MainActivity extends BridgeActivity {
                 @JavascriptInterface
                 public void media(String title, String artist, boolean playing, int posSec, int durSec) {
                     try {
+                        // بدون عنوان = لا تشغيل: نوقف الخدمة فقط. لا نستدعي startForegroundService
+                        // لأنه يُسقط التطبيق إذا لم تنفّذ الخدمة startForeground خلال ثوانٍ.
+                        if (title == null || title.length() == 0) {
+                            stopService(new Intent(MainActivity.this, AudioService.class));
+                            return;
+                        }
                         Intent si = new Intent(MainActivity.this, AudioService.class);
                         si.putExtra("title", title == null ? "" : title);
                         si.putExtra("artist", artist == null ? "" : artist);
