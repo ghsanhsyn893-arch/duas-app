@@ -498,3 +498,29 @@ html[data-bg="1"][data-theme="dark"] body::before{
 html[data-bg="1"] .hf-row{background:color-mix(in srgb,var(--card) 90%,transparent)}
 /* تسريع طبقة الخلفية أثناء التمرير */
 html[data-bg="1"] body::before{transform:translateZ(0);will-change:transform}
+
+/* المسبحة - تصميم جديد */
+.tsb2{display:flex;flex-direction:column;align-items:center;gap:14px;padding:6px 0 20px}
+.tcard{width:100%;box-sizing:border-box;border-radius:20px;padding:26px 16px 22px;text-align:center;border:1px solid var(--line);
+  background-color:var(--card);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><path d='M32 0L64 32L32 64L0 32Z M0 0L32 32L64 0 M0 64L32 32L64 64' fill='none' stroke='%23888' stroke-opacity='.22' stroke-width='1.200'/><circle cx='32' cy='32' r='9' fill='none' stroke='%23888' stroke-opacity='.22'/></svg>");}
+.tcn{direction:ltr;display:flex;justify-content:center;align-items:baseline;gap:8px}
+.tbig{font-size:64px;font-weight:800;line-height:1;color:var(--ink)}
+.tof{font-size:24px;color:var(--muted);font-weight:600}
+.tname2{margin-top:14px;font-size:30px;font-weight:800;color:var(--brand-2);min-height:42px}
+.tmid{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:10px;width:100%}
+.tsmall{width:58px;height:58px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:24px;
+  display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.tbtn2{--p:0%;width:min(60vw,240px);height:min(60vw,240px);border-radius:50%;border:0;color:var(--muted);font:inherit;font-size:17px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent;
+  background:radial-gradient(circle,var(--card) 0 66%,transparent 67%),conic-gradient(var(--gold) var(--p),var(--line) 0);
+  box-shadow:var(--shadow)}
+.tbtn2:active{transform:scale(.97)}
+.tchips{display:flex;gap:10px;overflow-x:auto;width:100%;padding:4px 2px 8px;scrollbar-width:none}
+.tchips::-webkit-scrollbar{display:none}
+.tchip{flex:none;white-space:nowrap;padding:10px 18px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:16px}
+.tchip.on{border-color:var(--gold);color:var(--brand-2);font-weight:700}
+.tplus{font-size:22px;padding:6px 18px}
+.tx{margin-inline-start:8px;opacity:.6;font-size:18px}
+.tform{width:100%;display:flex;flex-direction:column;gap:8px}
+.tform[hidden]{display:none}

@@ -20,6 +20,19 @@
   }
   function applyData(d) {
     DATA = d; ITEMS = d.items; CATS = d.categories; BOOKS = d.books || []; VERSION = d.version; OCC = d.occasions || []; MS = parseStarts(d.month_starts);
+    syncMine();
+  }
+  // أذكاري: نصوص يكتبها المستخدم بنفسه (تُحفظ محلياً)
+  function getMine() {
+    try {
+      var m = JSON.parse(localStorage.getItem("mine") || "[]");
+      return Array.isArray(m) ? m.filter(function (x) { return x && typeof x.id === "string" && typeof x.title === "string" && typeof x.text === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setMine(m) { try { localStorage.setItem("mine", JSON.stringify(m)); } catch (e) {} }
+  function syncMine() {
+    Object.keys(ITEMS).forEach(function (k) { if (k.indexOf("my:") === 0) delete ITEMS[k]; });
+    getMine().forEach(function (x) { ITEMS["my:" + x.id] = { title: x.title, text: x.text, mine: true }; });
   }
   // آخر نسخة محفوظة من الإنترنت (إن كانت أحدث من المدمجة)
   try {
@@ -121,6 +134,7 @@
       });
     });
   }
+  syncMine();
   buildIndex();
 
   function applyTheme() {
@@ -253,7 +267,7 @@
 
   /* ---------------- النسخ الاحتياطي ---------------- */
   // يُنسخ تقدّمك وإعداداتك فقط (لا مفاتيح ولا كلمات سر ولا ذاكرة مؤقتة)
-  var BK_OK = /^(cfg|favs|hifz|tasbih|tsvib|hijriAdj|pins|lastrec|scanzoom|reads|lastItem|splitMode|splitLast|pos:.+|bm:.+)$/;
+  var BK_OK = /^(cfg|favs|hifz|tasbih|tsvib|hijriAdj|pins|lastrec|scanzoom|reads|lastItem|mine|tscustom|splitMode|splitLast|pos:.+|bm:.+)$/;
   function backupText() {
     var d = {};
     try {
@@ -340,6 +354,8 @@
     else if (v.type === "hifz") renderHifz();
     else if (v.type === "listen") renderListen(v);
     else if (v.type === "cal") renderCal();
+    else if (v.type === "mine") renderMine();
+    else if (v.type === "mineEdit") renderMineEdit(v);
     updateTabs();
     applyAwake();
   }
@@ -359,7 +375,7 @@
     render(); window.scrollTo(0, 0);
   }
   function updateTabs() {
-    var v = stack[stack.length - 1], show = ["home", "lib", "listen", "favs", "cal", "tasbih", "hifz"].indexOf(v.type) >= 0;
+    var v = stack[stack.length - 1], show = ["home", "lib", "listen", "favs", "cal", "tasbih", "hifz", "mine"].indexOf(v.type) >= 0;
     if (!tabsEl) {
       tabsEl = el("nav"); tabsEl.id = "tabs";
       var pill = el("div", "tpill");
@@ -968,53 +984,165 @@
     return { m: 0, st: 0, c: 0, tot: 0 };
   }
   function tsSet(o) { try { localStorage.setItem("tasbih", JSON.stringify(o)); } catch (e) {} }
+  function tsCustom() {
+    try {
+      var c = JSON.parse(localStorage.getItem("tscustom") || "[]");
+      return Array.isArray(c) ? c.filter(function (x) { return x && typeof x.n === "string" && x.n && typeof x.g === "number"; }).slice(0, 30) : [];
+    } catch (e) { return []; }
+  }
+  function tsAll() {
+    return TSB.concat(tsCustom().map(function (x) { return { n: x.n, seq: [[x.n, x.g]], custom: true }; }));
+  }
   function renderTasbih() {
     titleEl.textContent = "المسبحة";
+    var ALL = tsAll();
     var S = tsGet();
-    if (!TSB[S.m] || !TSB[S.m].seq[S.st]) { S = { m: 0, st: 0, c: 0, tot: S.tot || 0 }; }
-    var box = el("div", "tsb");
-    var sel = el("select", "tsel");
-    TSB.forEach(function (t, i) { var o = el("option", null, t.n); o.value = i; if (i === S.m) o.selected = true; sel.appendChild(o); });
-    box.appendChild(sel);
-    var name = el("div", "tname", "");
-    var cnt = el("button", "tbtn", "0");
-    var goal = el("div", "tgoal", "");
+    if (!ALL[S.m] || !ALL[S.m].seq[S.st]) { S = { m: 0, st: 0, c: 0, tot: S.tot || 0 }; }
+    var box = el("div", "tsb2");
+
+    var card = el("div", "tcard");
+    var cn = el("div", "tcn");
+    var big = el("span", "tbig", "0"), of = el("span", "tof", "");
+    cn.appendChild(of); cn.appendChild(big);
+    var name = el("div", "tname2", "");
+    card.appendChild(cn); card.appendChild(name);
+    box.appendChild(card);
     var tot = el("div", "tgoal", "");
-    var row = el("div", "reader-tools");
-    var rs = el("button", "chip", "↺ تصفير");
-    var vb = el("button", "chip", "");
-    row.appendChild(rs); row.appendChild(vb);
-    [sel, name, cnt, goal, tot, row].forEach(function (x) { box.appendChild(x); });
+    box.appendChild(tot);
+
+    var mid = el("div", "tmid");
+    var snd = el("button", "tsmall", "");
+    var cnt = el("button", "tbtn2");
+    cnt.innerHTML = '<svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10l5.2 1.2a2 2 0 0 1 1.5 2.300L18 18a3 3 0 0 1-3 2.500h-3.300a3 3 0 0 1-2.400-1.200L6 15.500a1.500 1.500 0 0 1 2.400-1.800L9 14.300"/></svg><span>اضغط هنا</span>';
+    var rs = el("button", "tsmall", "↺");
+    rs.setAttribute("aria-label", "تصفير");
+    snd.setAttribute("aria-label", "الاهتزاز");
+    mid.appendChild(snd); mid.appendChild(cnt); mid.appendChild(rs);
+    box.appendChild(mid);
+
+    var chips = el("div", "tchips");
+    var addb = el("button", "tchip tplus", "+");
+    chips.appendChild(addb);
+    box.appendChild(chips);
+    var form = el("div", "tform"); form.hidden = true;
+    var fn = el("input", "search"); fn.type = "text"; fn.maxLength = 60; fn.placeholder = "اسم الذكر";
+    var fg = el("input", "search"); fg.type = "number"; fg.min = 1; fg.max = 100000; fg.placeholder = "العدد المطلوب (اختياري)";
+    var fs = el("button", "chip on", "✓ إضافة");
+    form.appendChild(fn); form.appendChild(fg); form.appendChild(fs);
+    box.appendChild(form);
     viewEl.appendChild(box);
+
     var vibOn = true;
     try { vibOn = localStorage.getItem("tsvib") !== "0"; } catch (e) {}
     function buzz(ms) { if (vibOn && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
+    function drawChips() {
+      Array.prototype.slice.call(chips.querySelectorAll(".tchip:not(.tplus)")).forEach(function (n) { n.remove(); });
+      ALL.forEach(function (t, i) {
+        var c = el("button", "tchip" + (i === S.m ? " on" : ""), t.n);
+        c.onclick = function () { S.m = i; S.st = 0; S.c = 0; drawChips(); paint(); };
+        if (t.custom) {
+          var x = el("span", "tx", "×");
+          x.onclick = function (ev) {
+            ev.stopPropagation();
+            if (!window.confirm("حذف «" + t.n + "»؟")) return;
+            var cu = tsCustom(); cu.splice(i - TSB.length, 1);
+            try { localStorage.setItem("tscustom", JSON.stringify(cu)); } catch (e) {}
+            if (S.m === i) { S.m = 0; S.st = 0; S.c = 0; }
+            else if (S.m > i) S.m--;
+            ALL = tsAll(); drawChips(); paint();
+          };
+          c.appendChild(x);
+        }
+        chips.insertBefore(c, addb);
+      });
+    }
     function paint() {
-      var t = TSB[S.m], q = t.seq[S.st];
-      name.textContent = q[0] || "";
-      cnt.textContent = S.c;
-      goal.textContent = q[1] ? ("الهدف: " + q[1] + (t.seq.length > 1 ? " — المرحلة " + (S.st + 1) + " من " + t.seq.length : "")) : "";
-      tot.textContent = "المجموع الكلي: " + S.tot;
-      vb.textContent = vibOn ? "📳 الاهتزاز: يعمل" : "🔇 الاهتزاز: متوقف";
+      var t = ALL[S.m], q = t.seq[S.st];
+      name.textContent = q[0] || (t.n);
+      big.textContent = S.c;
+      of.textContent = q[1] ? "/ " + q[1] : "";
+      var p = q[1] ? Math.min(100, Math.round(100 * S.c / q[1])) : 0;
+      cnt.style.setProperty("--p", p + "%");
+      tot.textContent = (t.seq.length > 1 ? "المرحلة " + (S.st + 1) + " من " + t.seq.length + " — " : "") + "المجموع الكلي: " + S.tot;
+      snd.textContent = vibOn ? "📳" : "🔇";
       tsSet(S);
     }
     cnt.onclick = function () {
-      var q = TSB[S.m].seq[S.st];
+      var q = ALL[S.m].seq[S.st];
       S.c++; S.tot++;
       if (q[1] && S.c >= q[1]) {
         buzz([120, 60, 120]);
-        if (S.st < TSB[S.m].seq.length - 1) { S.st++; S.c = 0; toast("المرحلة التالية: " + TSB[S.m].seq[S.st][0]); }
+        if (S.st < ALL[S.m].seq.length - 1) { S.st++; S.c = 0; toast("المرحلة التالية: " + ALL[S.m].seq[S.st][0]); }
         else { toast("اكتمل التسبيح ✓"); S.c = 0; S.st = 0; }
       } else buzz(15);
       paint();
     };
-    sel.onchange = function () { S.m = +sel.value; S.st = 0; S.c = 0; paint(); };
     rs.onclick = function () { S.c = 0; S.st = 0; paint(); };
-    vb.onclick = function () { vibOn = !vibOn; try { localStorage.setItem("tsvib", vibOn ? "1" : "0"); } catch (e) {} paint(); };
-    paint();
+    snd.onclick = function () { vibOn = !vibOn; try { localStorage.setItem("tsvib", vibOn ? "1" : "0"); } catch (e) {} paint(); };
+    addb.onclick = function () { form.hidden = !form.hidden; if (!form.hidden) fn.focus(); };
+    fs.onclick = function () {
+      var n = fn.value.trim(), g = Math.floor(+fg.value || 0);
+      if (!n) { toast("اكتب اسم الذكر"); return; }
+      if (g < 0 || g > 100000) { toast("العدد غير صالح"); return; }
+      var cu = tsCustom(); cu.push({ n: n, g: g });
+      try { localStorage.setItem("tscustom", JSON.stringify(cu)); } catch (e) {}
+      ALL = tsAll(); S.m = ALL.length - 1; S.st = 0; S.c = 0;
+      fn.value = ""; fg.value = ""; form.hidden = true;
+      drawChips(); paint();
+    };
+    drawChips(); paint();
   }
 
   /* ---------------- الرئيسية ---------------- */
+  function renderMine() {
+    titleEl.textContent = "✍️ أذكاري";
+    var m = getMine().sort(function (x, y) { return (y.t || 0) - (x.t || 0); });
+    var add = el("button", "chip on", "＋ إضافة دعاء / ذكر");
+    add.onclick = function () { go({ type: "mineEdit" }); };
+    var tl = el("div", "reader-tools"); tl.appendChild(add); viewEl.appendChild(tl);
+    if (!m.length) {
+      var em = el("div", "favempty");
+      em.appendChild(el("div", "fe-i", "✍️"));
+      em.appendChild(el("div", "fe-t", "لا توجد أذكار محفوظة بعد"));
+      em.appendChild(el("div", "fe-s", "احفظ أدعيتك وأذكارك هنا لتجدها بسهولة في أي وقت."));
+      viewEl.appendChild(em);
+      return;
+    }
+    var list = el("div", "list");
+    m.forEach(function (x) { list.appendChild(itemRow("my:" + x.id)); });
+    viewEl.appendChild(list);
+  }
+
+  function renderMineEdit(v) {
+    var cur = v.id ? getMine().filter(function (x) { return x.id === v.id; })[0] : null;
+    titleEl.textContent = cur ? "تعديل" : "إضافة دعاء / ذكر";
+    viewEl.appendChild(el("div", "sec", "العنوان"));
+    var ti = el("input", "search"); ti.type = "text"; ti.maxLength = 120;
+    ti.placeholder = "عنوان الدعاء"; ti.value = cur ? cur.title : "";
+    viewEl.appendChild(ti);
+    viewEl.appendChild(el("div", "sec", "النص"));
+    var tx = el("textarea", "bk-ta"); tx.style.minHeight = "280px";
+    tx.placeholder = "اكتب نص الدعاء أو الذكر هنا..."; tx.value = cur ? cur.text : "";
+    viewEl.appendChild(tx);
+    var sv = el("button", "chip on", "✓ حفظ");
+    sv.onclick = function () {
+      var t = ti.value.trim(), body = tx.value.replace(/\s+$/, "");
+      if (!t) { toast("اكتب عنواناً"); return; }
+      if (!body.trim()) { toast("اكتب النص"); return; }
+      if (body.length > 200000) { toast("النص طويل جداً"); return; }
+      var m = getMine();
+      if (cur) {
+        m.forEach(function (x) { if (x.id === cur.id) { x.title = t; x.text = body; x.t = Date.now(); } });
+      } else {
+        m.push({ id: Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36), title: t, text: body, t: Date.now() });
+      }
+      setMine(m); syncMine(); buildIndex();
+      toast("تم الحفظ");
+      stack.pop(); render(); window.scrollTo(0, 0);
+    };
+    var wrap = el("div", "reader-tools"); wrap.appendChild(sv); viewEl.appendChild(wrap);
+  }
+
   function renderHome() {
     titleEl.textContent = "أدعية وزيارات";
     var hh = new Date().getHours();
@@ -1082,6 +1210,12 @@
         rcards.push({ t: li.t, n: ib });
       }
       rcards.sort(function (a, b) { return b.t - a.t; }).forEach(function (c) { box.appendChild(c.n); });
+      var mc = el("button", "resume");
+      mc.appendChild(el("span", "rt", "✍️ أذكاري"));
+      mc.appendChild(el("span", "rn", getMine().length ? getMine().length + " محفوظ" : "أضف أدعيتك وأذكارك"));
+      mc.appendChild(el("span", "rp", "نصوص تكتبها بنفسك وتقرأها بأي وقت"));
+      mc.onclick = function () { go({ type: "mine" }); };
+      box.appendChild(mc);
       var hcat = CATS.filter(function (c) { return c.id === "c7"; })[0];
       var hks = hcat ? hcat.keys.filter(function (k) { return ITEMS[k]; }) : [];
       if (hks.length) {
@@ -1318,6 +1452,20 @@
         var hh2 = document.documentElement.scrollHeight - window.innerHeight;
         if (hh2 > 0) window.scrollTo(0, hh2 * v.restore / 100);
       }, 90);
+    }
+    if (it.mine) {
+      var eb = el("button", "chip", "✎ تعديل");
+      eb.onclick = function () { go({ type: "mineEdit", id: v.key.slice(3) }); };
+      var db = el("button", "chip", "🗑 حذف");
+      db.onclick = function () {
+        if (!window.confirm("حذف «" + it.title + "» نهائياً؟")) return;
+        var id = v.key.slice(3);
+        setMine(getMine().filter(function (x) { return x.id !== id; }));
+        syncMine(); buildIndex();
+        toast("تم الحذف");
+        stack.pop(); render();
+      };
+      tools.appendChild(eb); tools.appendChild(db);
     }
     viewEl.appendChild(tools);
 
@@ -2348,6 +2496,16 @@
         scheduling = false;
         return;
       }
+
+      try {
+        if (ln.checkExactNotificationSetting) {
+          var ex = await ln.checkExactNotificationSetting();
+          if (ex && ex.exact_alarm !== "granted" && ln.changeExactNotificationSetting) {
+            if (askPermission) toast("فعّل «المنبّهات والتذكيرات» ليصل التنبيه بالدقيقة");
+            await ln.changeExactNotificationSetting();
+          }
+        }
+      } catch (e) {}
 
       var pending = await ln.getPending();
       if (pending.notifications && pending.notifications.length) {
