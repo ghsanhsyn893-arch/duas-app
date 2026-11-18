@@ -32,7 +32,12 @@
     theme: "auto",
     nav: "normal",
     glass: 45,
+    bg: true,                              // صورة خلفية التطبيق
+    bga: 35,                               // وضوح الصورة (0-100)
     fs: 22,
+    lh: 2.1,                               // تباعد الأسطر
+    calm: false,                           // وضع القراءة الهادئ
+    awake: false,                          // إبقاء الشاشة مضيئة أثناء القراءة
     daily: { on: false, time: "08:00" },   // حديث يومي بوقت الشخص
     away: { on: true },                    // تذكير عند الغياب
     sabah: { on: false, time: "06:00" },   // دعاء الصباح يومياً
@@ -86,9 +91,23 @@
 
   function norm(s) {
     return (s || "")
-      .replace(/[ً-ٰٟۖ-ۭـ]/g, "")
-      .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+      .replace(/[\u064B-\u0670\u06D6-\u06ED\u0640\u200C-\u200F]/g, "")
+      .replace(/[\u0623\u0625\u0622\u0671]/g, "\u0627")
+      .replace(/\u0649/g, "\u064A").replace(/\u06CC/g, "\u064A")
+      .replace(/\u0629/g, "\u0647")
+      .replace(/\u0624/g, "\u0648").replace(/\u0626/g, "\u064A").replace(/\u0621/g, "")
+      .replace(/\u06A9/g, "\u0643")
+      .replace(/[\u0660-\u0669]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/[\u06F0-\u06F9]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
+      .replace(/[\u060C\u061B\u061F.,;:!?()\[\]{}"'«»]/g, " ")
+      .replace(/\s+/g, " ")
       .toLowerCase();
+  }
+  // كل الكلمات لازم توجد (بأي ترتيب)
+  function has(h, q) {
+    var w = q.split(" ");
+    for (var i = 0; i < w.length; i++) if (w[i] && h.indexOf(w[i]) === -1) return false;
+    return true;
   }
   var INDEX = {}, BINDEX = [];
   function buildIndex() {
@@ -111,13 +130,34 @@
     }
     document.documentElement.setAttribute("data-theme", t);
     document.documentElement.setAttribute("data-nav", cfg.nav === "glass" ? "glass" : "normal");
+    document.documentElement.setAttribute("data-bg", cfg.bg ? "1" : "0");
+    document.documentElement.style.setProperty("--bgv", String(Math.max(0, Math.min(100, +cfg.bga || 0)) / 100));
     document.documentElement.style.setProperty("--ga", String(0.15 + Math.max(0, Math.min(100, +cfg.glass || 0)) / 100 * 2.2));
     var m = document.querySelector('meta[name="theme-color"]');
     if (m) m.setAttribute("content", t === "dark" ? "#0b2a20" : "#0f3d2e");
   }
   function applyFont() {
     document.documentElement.style.setProperty("--fs", cfg.fs + "px");
+    document.documentElement.style.setProperty("--lh", String(cfg.lh || 2.1));
+    document.documentElement.setAttribute("data-calm", cfg.calm ? "1" : "0");
   }
+
+  // إبقاء الشاشة مضيئة أثناء القراءة (إن دعمها الجهاز)
+  var wl = null, wlBusy = false;
+  function applyAwake() {
+    var top = stack[stack.length - 1];
+    var want = cfg.awake && top && (top.type === "item" || top.type === "book" || top.type === "vol");
+    try {
+      if (want && !wl && !wlBusy && navigator.wakeLock && document.visibilityState === "visible") {
+        wlBusy = true;
+        navigator.wakeLock.request("screen").then(function (sn) {
+          wlBusy = false; wl = sn;
+          sn.addEventListener("release", function () { if (wl === sn) wl = null; });
+        }, function () { wlBusy = false; });
+      } else if (!want && wl) { wl.release(); wl = null; }
+    } catch (e) { wlBusy = false; }
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") applyAwake(); });
 
   function copyText(txt) {
     function done() { toast("تم النسخ"); }
@@ -187,6 +227,82 @@
     return b;
   }
 
+  /* ---------------- سجل القراءة وآخر عنصر ---------------- */
+  function getReads() {
+    try { var o = JSON.parse(localStorage.getItem("reads") || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; }
+    catch (e) { return {}; }
+  }
+  function isRead(k) { return !!getReads()[k]; }
+  function toggleRead(k) {
+    var o = getReads(), on;
+    if (o[k]) { delete o[k]; on = false; } else { o[k] = Date.now(); on = true; }
+    try { localStorage.setItem("reads", JSON.stringify(o)); } catch (e) {}
+    return on;
+  }
+  function readCount() { return Object.keys(getReads()).filter(function (k) { return ITEMS[k]; }).length; }
+  function getLastItem() {
+    try {
+      var o = JSON.parse(localStorage.getItem("lastItem") || "null");
+      if (o && typeof o.k === "string" && ITEMS[o.k]) return { k: o.k, t: +o.t || 0, pct: +o.pct || 0 };
+    } catch (e) {}
+    return null;
+  }
+  function setLastItem(k, pct) {
+    try { localStorage.setItem("lastItem", JSON.stringify({ k: k, t: Date.now(), pct: pct || 0 })); } catch (e) {}
+  }
+
+  /* ---------------- النسخ الاحتياطي ---------------- */
+  // يُنسخ تقدّمك وإعداداتك فقط (لا مفاتيح ولا كلمات سر ولا ذاكرة مؤقتة)
+  var BK_OK = /^(cfg|favs|hifz|tasbih|tsvib|hijriAdj|pins|lastrec|scanzoom|reads|lastItem|splitMode|splitLast|pos:.+|bm:.+)$/;
+  function backupText() {
+    var d = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (BK_OK.test(k)) d[k] = localStorage.getItem(k);
+      }
+    } catch (e) {}
+    return JSON.stringify({ app: "duas", v: 1, t: new Date().toISOString(), data: d });
+  }
+  function restoreFrom(text) {
+    var o;
+    try { o = JSON.parse(text); } catch (e) { throw new Error("الملف غير صالح"); }
+    if (!o || o.app !== "duas" || !o.data || typeof o.data !== "object") throw new Error("هذا ليس ملف نسخة احتياطية لهذا التطبيق");
+    var n = 0;
+    Object.keys(o.data).forEach(function (k) {
+      var val = o.data[k];
+      if (BK_OK.test(k) && typeof val === "string" && val.length < 2000000) {
+        try { localStorage.setItem(k, val); n++; } catch (e) {}
+      }
+    });
+    if (!n) throw new Error("النسخة فارغة");
+    return n;
+  }
+  function doRestore(text) {
+    if (!confirm("سيتم دمج النسخة الاحتياطية مع بياناتك الحالية (وتستبدل المتشابه). متابعة؟")) return;
+    try {
+      var n = restoreFrom(text);
+      toast("تم استرجاع " + n + " عنصر");
+      setTimeout(function () { location.reload(); }, 900);
+    } catch (e) { toast(e.message || "تعذّر الاسترجاع"); }
+  }
+  function saveBackupFile() {
+    var text = backupText();
+    var d = new Date(), fname = "duas-backup-" + d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + ".json";
+    var P = window.Capacitor && window.Capacitor.Plugins || {};
+    if (P.Filesystem && P.Share) {
+      P.Filesystem.writeFile({ path: fname, data: text, directory: "CACHE", encoding: "utf8" })
+        .then(function (r) { return P.Share.share({ title: "نسخة احتياطية", files: [r.uri], dialogTitle: "احفظ النسخة الاحتياطية" }); })
+        .catch(function () { copyText(text); toast("تعذّر الحفظ كملف، تم نسخها كنص"); });
+      return;
+    }
+    try {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      a.download = fname; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch (e) { copyText(text); }
+  }
+
   /* ---------------- التنقل ---------------- */
   var stack = [{ type: "home" }];
   var query = "";
@@ -225,6 +341,7 @@
     else if (v.type === "listen") renderListen(v);
     else if (v.type === "cal") renderCal();
     updateTabs();
+    applyAwake();
   }
 
   var TABS = [
@@ -918,11 +1035,11 @@
       box.textContent = "";
       var q = norm(query.trim());
       if (q) {
-        var keys = Object.keys(ITEMS).filter(function (k) { return INDEX[k].indexOf(q) !== -1; });
-        var bh = BINDEX.filter(function (x) { return x.n.indexOf(q) !== -1; }).slice(0, 30);
+        var keys = Object.keys(ITEMS).filter(function (k) { return has(INDEX[k], q); });
+        var bh = BINDEX.filter(function (x) { return has(x.n, q); }).slice(0, 30);
         var bks = BOOKS.filter(function (b) {
-          return norm(b.title + " " + (b.author || "") + " " + (b.desc || "")).indexOf(q) !== -1 ||
-            (b.volumes || []).some(function (v) { return norm(v.title || "").indexOf(q) !== -1; });
+          return has(norm(b.title + " " + (b.author || "") + " " + (b.desc || "")), q) ||
+            (b.volumes || []).some(function (v) { return has(norm(v.title || ""), q); });
         }).slice(0, 12);
         if (!keys.length && !bh.length && !bks.length) { box.appendChild(el("div", "empty", "ما لقينا نتيجة")); return; }
         if (bks.length) {
@@ -945,14 +1062,26 @@
         return;
       }
       var last = lastRead();
+      var li = getLastItem();
+      var rcards = [];
       if (last) {
         var rb = el("button", "resume");
         rb.appendChild(el("span", "rt", "📖 تابع القراءة"));
         rb.appendChild(el("span", "rn", last.book.title));
         rb.appendChild(el("span", "rp", last.chTitle + (last.pct ? " — " + last.pct + "%" : "")));
         rb.onclick = function () { openBook(last.book.id); };
-        box.appendChild(rb);
+        rcards.push({ t: last.t || 0, n: rb });
       }
+      if (li) {
+        var ib = el("button", "resume");
+        var ipct = (li.pct > 0 && li.pct < 98) ? li.pct : 0;
+        ib.appendChild(el("span", "rt", "📖 تابع القراءة"));
+        ib.appendChild(el("span", "rn", ITEMS[li.k].title));
+        ib.appendChild(el("span", "rp", ipct ? ipct + "%" : (isRead(li.k) ? "✓ قرأتها" : "اضغط للمتابعة")));
+        ib.onclick = function () { go({ type: "item", key: li.k, restore: ipct }); };
+        rcards.push({ t: li.t, n: ib });
+      }
+      rcards.sort(function (a, b) { return b.t - a.t; }).forEach(function (c) { box.appendChild(c.n); });
       var hcat = CATS.filter(function (c) { return c.id === "c7"; })[0];
       var hks = hcat ? hcat.keys.filter(function (k) { return ITEMS[k]; }) : [];
       if (hks.length) {
@@ -978,7 +1107,7 @@
         box.appendChild(hw);
       }
       var dks = Object.keys(ITEMS);
-      if (dks.length && !last) {
+      if (dks.length && !last && !li) {
         var dn = Math.floor(Date.now() / 86400000);
         var dk = dks[dn % dks.length];
         var dc = el("button", "resume daily");
@@ -1045,7 +1174,8 @@
 
   function itemRow(k) {
     var b = el("button", "row irow");
-    b.appendChild(el("span", "ibadge", "❖"));
+    var rdn = isRead(k);
+    b.appendChild(el("span", "ibadge" + (rdn ? " done" : ""), rdn ? "✓" : "❖"));
     b.appendChild(el("span", "it", ITEMS[k].title));
     b.appendChild(el("span", "chev", "‹"));
     b.onclick = function () { go({ type: "item", key: k }); };
@@ -1174,7 +1304,21 @@
       try { sel = String(window.getSelection() || "").trim(); } catch (e) {}
       shareCard(it.title, sel || it.text, it.source);
     };
-    [plus, minus, cp, sh, im, favChip("items", v.key)].forEach(function (b) { tools.appendChild(b); });
+    var rdb = el("button", "chip" + (isRead(v.key) ? " on" : ""), isRead(v.key) ? "✓ قرأتها" : "قرأتها");
+    rdb.onclick = function () {
+      var on = toggleRead(v.key);
+      rdb.className = "chip" + (on ? " on" : "");
+      rdb.textContent = on ? "✓ قرأتها" : "قرأتها";
+      toast(on ? "تم تسجيلها ضمن ما قرأت" : "أُلغي التسجيل");
+    };
+    [plus, minus, rdb, cp, sh, im, favChip("items", v.key)].forEach(function (b) { tools.appendChild(b); });
+    setLastItem(v.key, v.restore || 0);
+    if (v.restore) {
+      setTimeout(function () {
+        var hh2 = document.documentElement.scrollHeight - window.innerHeight;
+        if (hh2 > 0) window.scrollTo(0, hh2 * v.restore / 100);
+      }, 90);
+    }
     viewEl.appendChild(tools);
 
     if (it.audio && it.audio.length) {
@@ -1214,6 +1358,20 @@
     viewEl.appendChild(paper);
   }
 
+  // حفظ موضع القراءة داخل الدعاء/الزيارة (لبطاقة "تابع القراءة")
+  var itemScrollT = 0;
+  window.addEventListener("scroll", function () {
+    var top = stack[stack.length - 1];
+    if (!top || top.type !== "item") return;
+    clearTimeout(itemScrollT);
+    itemScrollT = setTimeout(function () {
+      if (stack[stack.length - 1] !== top) return;
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      var p = h > 0 ? Math.round(window.scrollY / h * 100) : 0;
+      setLastItem(top.key, Math.max(0, Math.min(100, p)));
+    }, 400);
+  }, { passive: true });
+
 
   /* ---------------- المكتبة ---------------- */
   function getPos(id) {
@@ -1241,10 +1399,10 @@
     if (best.book.kind === "scan") {
       var vv = (best.book.volumes || []).filter(function (x) { return x.id === best.p.vol; })[0];
       if (!vv) return null;
-      return { book: best.book, chTitle: vv.title + " – صفحة " + i2p(vv, best.p.ch || 0), pct: best.p.pct || 0 };
+      return { book: best.book, chTitle: vv.title + " – صفحة " + i2p(vv, best.p.ch || 0), pct: best.p.pct || 0, t: best.p.t };
     }
     var i = Math.min(best.p.ch || 0, best.book.chapters.length - 1);
-    return { book: best.book, chTitle: best.book.chapters[i].title, pct: best.p.pct || 0 };
+    return { book: best.book, chTitle: best.book.chapters[i].title, pct: best.p.pct || 0, t: best.p.t };
   }
 
   /* ---------------- تثبيت الكتب ---------------- */
@@ -2065,11 +2223,68 @@
       gr.oninput = function () { cfg.glass = +gr.value; applyTheme(); saveCfg(); };
       look.appendChild(row("شفافية الزجاج", "يسار: شفاف أكثر — يمين: معتم أكثر", gr));
     }
+    look.appendChild(row("صورة الخلفية", "القبة والمنارتان خلف التطبيق",
+      sw(!!cfg.bg, function (v) { cfg.bg = v; applyTheme(); saveCfg(); render(); })));
+    if (cfg.bg) {
+      var bgr = document.createElement("input");
+      bgr.type = "range"; bgr.min = 0; bgr.max = 100; bgr.step = 5; bgr.value = cfg.bga;
+      bgr.oninput = function () { cfg.bga = +bgr.value; applyTheme(); saveCfg(); };
+      look.appendChild(row("وضوح الخلفية", "يسار: خافتة — يمين: أوضح", bgr));
+    }
     var rng = document.createElement("input");
     rng.type = "range"; rng.min = 16; rng.max = 40; rng.step = 2; rng.value = cfg.fs;
     rng.oninput = function () { cfg.fs = +rng.value; applyFont(); saveCfg(); };
     look.appendChild(row("حجم خط القراءة", null, rng));
     viewEl.appendChild(look);
+
+    var rdc = el("section", "card");
+    rdc.appendChild(el("h3", null, "📖 القراءة"));
+    var lsr = document.createElement("input");
+    lsr.type = "range"; lsr.min = 16; lsr.max = 30; lsr.step = 1; lsr.value = Math.round((cfg.lh || 2.1) * 10);
+    lsr.oninput = function () { cfg.lh = +lsr.value / 10; applyFont(); saveCfg(); };
+    rdc.appendChild(row("تباعد الأسطر", null, lsr));
+    rdc.appendChild(row("وضع القراءة الهادئ", "ورقة بلون مريح للعين",
+      sw(!!cfg.calm, function (v) { cfg.calm = v; applyFont(); saveCfg(); })));
+    rdc.appendChild(row("إبقاء الشاشة مضيئة", "أثناء قراءة الأدعية والكتب",
+      sw(!!cfg.awake, function (v) {
+        cfg.awake = v; saveCfg();
+        if (v && !navigator.wakeLock) toast("جهازك لا يدعم هذه الميزة من داخل التطبيق");
+        applyAwake();
+      })));
+    viewEl.appendChild(rdc);
+
+    var bk = el("section", "card");
+    bk.appendChild(el("h3", null, "💾 النسخ الاحتياطي"));
+    bk.appendChild(el("p", "note", "قرأت " + readCount() + " عنصراً. تُحفظ علاماتك ومفضلتك وموضع قراءتك والإعدادات فقط (بدون أي كلمات سر)."));
+    var bkr = el("div", "reader-tools");
+    var bs = el("button", "chip on", "💾 حفظ نسخة احتياطية");
+    bs.onclick = saveBackupFile;
+    var bc = el("button", "chip", "نسخ كنص");
+    bc.onclick = function () { copyText(backupText()); };
+    bkr.appendChild(bs); bkr.appendChild(bc);
+    bk.appendChild(bkr);
+    var fl = document.createElement("input");
+    fl.type = "file"; fl.accept = ".json,.txt,application/json,text/plain"; fl.style.display = "none";
+    fl.onchange = function () {
+      var f = fl.files && fl.files[0]; if (!f) return;
+      if (f.size > 5000000) { toast("الملف كبير جداً"); return; }
+      var fr = new FileReader();
+      fr.onload = function () { doRestore(String(fr.result || "")); };
+      fr.onerror = function () { toast("تعذّرت قراءة الملف"); };
+      fr.readAsText(f);
+    };
+    var bf = el("button", "chip", "📂 استرجاع من ملف");
+    bf.onclick = function () { fl.click(); };
+    var rr = el("div", "reader-tools");
+    rr.appendChild(bf); rr.appendChild(fl);
+    bk.appendChild(rr);
+    var ta = el("textarea", "bk-ta");
+    ta.placeholder = "أو الصق النسخة الاحتياطية هنا…";
+    bk.appendChild(ta);
+    var bp = el("button", "chip", "استرجاع من النص");
+    bp.onclick = function () { if (ta.value.trim()) doRestore(ta.value); else toast("الصق النسخة أولاً"); };
+    bk.appendChild(bp);
+    viewEl.appendChild(bk);
 
     var about = el("section", "card");
     about.appendChild(el("h3", null, "ℹ️ عن التطبيق"));
