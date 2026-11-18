@@ -9,6 +9,7 @@ perms = [
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.SCHEDULE_EXACT_ALARM",
+    "android.permission.USE_EXACT_ALARM",
     "android.permission.VIBRATE",
     "android.permission.WAKE_LOCK",
     "android.permission.FOREGROUND_SERVICE",
@@ -34,7 +35,26 @@ if _m:
     s = s.replace(_tag, _new, 1)
 if "AudioService" not in s:
     s = s.replace("</application>", '    <service android:name=".AudioService" android:foregroundServiceType="mediaPlayback" android:exported="false" />\n    </application>')
+# تقوية أمنية: لا نسخ احتياطي عبر adb، ولا اتصال غير مشفّر
+_m2 = re.search(r"<application\b[^>]*>", s)
+if _m2:
+    _t = _m2.group(0)
+    _n = re.sub(r'\sandroid:(allowBackup|usesCleartextTraffic|debuggable)="[^"]*"', "", _t)
+    _n = _n.replace("<application", '<application android:allowBackup="false" android:usesCleartextTraffic="false"', 1)
+    s = s.replace(_t, _n, 1)
 open(manifest, "w", encoding="utf-8").write(s)
+
+# capacitor.config.json: إيقاف المحتوى المختلط (http داخل https)
+try:
+    import json as _json
+    _cc = "capacitor.config.json"
+    if os.path.exists(_cc):
+        _c = _json.load(open(_cc, encoding="utf-8"))
+        _c.setdefault("android", {})["allowMixedContent"] = False
+        _json.dump(_c, open(_cc, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        print("capacitor.config: allowMixedContent=false")
+except Exception as _e:
+    print("capacitor.config patch skipped:", _e)
 
 drawable = "android/app/src/main/res/drawable"
 os.makedirs(drawable, exist_ok=True)
@@ -42,6 +62,16 @@ for _src in ("scripts/ic_stat_dua.xml", "ic_stat_dua.xml", "../ic_stat_dua.xml")
     if os.path.exists(_src):
         shutil.copy(_src, os.path.join(drawable, "ic_stat_dua.xml"))
         break
+# أيقونة الإشعار الصغيرة: إن لم يوجد ملف جاهز نكتب أيقونة بسيطة (قبة) حتى لا يسقط الإشعار بصمت
+_ic = os.path.join(drawable, "ic_stat_dua.xml")
+if not os.path.exists(_ic):
+    open(_ic, "w", encoding="utf-8").write(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">\n'
+        '    <path android:fillColor="#FFFFFFFF" android:pathData="M12,2.5C9.6,5 7.5,7.2 7.5,10.3H16.5C16.5,7.2 14.4,5 12,2.5ZM5,11.5H19V13.5H5ZM7,14.5H17V21.5H7Z"/>\n'
+        '</vector>\n')
+    print("wrote default ic_stat_dua.xml")
 
 # أيقونة التطبيق من icon-only.png (احتياطي مضمون لو فشلت خطوة توليد الأيقونات)
 def make_icons():
@@ -156,6 +186,8 @@ public class MainActivity extends BridgeActivity {
     private void js(final String cmd) {
         try {
             if (getBridge() == null || getBridge().getWebView() == null) return;
+            // أمان: نقبل أوامر معروفة فقط (يمنع حقن كود عبر بث خارجي في أندرويد القديم)
+            if (cmd == null || !cmd.matches("^(play|pause|next|prev|seek:[0-9]{1,6})$")) return;
             final String code = "window.__mc&&window.__mc('" + cmd + "')";
             runOnUiThread(new Runnable() { public void run() {
                 try { getBridge().getWebView().evaluateJavascript(code, null); } catch (Exception e) { }
@@ -370,7 +402,7 @@ def apply_signing():
         "    }\n"
     )
     g, n1 = re.subn(r"(^android\s*\{[^\n]*\n)", lambda m: m.group(1) + sc, g, count=1, flags=re.M)
-    g, n2 = re.subn(r"(^\s*buildTypes\s*\{[^\n]*\n)", lambda m: m.group(1) + "        debug { signingConfig signingConfigs.duas }\n", g, count=1, flags=re.M)
+    g, n2 = re.subn(r"(^\s*buildTypes\s*\{[^\n]*\n)", lambda m: m.group(1) + "        debug { signingConfig signingConfigs.duas; debuggable false }\n", g, count=1, flags=re.M)
     if n1 != 1 or n2 != 1:
         print("signing: FAILED to patch build.gradle", n1, n2)
         sys.exit(1)
