@@ -12,6 +12,14 @@
 
   // أمان: لا نقبل إلا روابط https لأي رابط يأتي من بيانات خارجية
   function httpsOnly(u) { return typeof u === "string" && /^https:\/\//i.test(u) ? u : ""; }
+  // روابط الصوت/الحزم القادمة من ملف البيانات: فقط من نطاقات معروفة (https)
+  var TRUST_HOSTS = ["raw.githubusercontent.com", "ghsanhsyn893-arch.github.io", "assets.world-federation.org", "mp3quran.net"];
+  function trustedUrl(u) {
+    var m = typeof u === "string" && /^https:\/\/([^\/:?#@\\]+)(?::\d+)?(?:[\/?#]|$)/i.exec(u);
+    if (!m) return "";
+    var h = m[1].toLowerCase();
+    return TRUST_HOSTS.some(function (t) { return h === t || h.slice(-t.length - 1) === "." + t; }) ? u : "";
+  }
   // تحقق بنيوي صارم من البيانات الخارجية: أنواع، أطوال، مفاتيح، روابط، ومسارات الملفات
   function validData(d) {
     function isStr(v, max) { return typeof v === "string" && v.length <= max; }
@@ -32,7 +40,7 @@
           for (var a = 0; a < it.audio.length; a++) {
             var au = it.audio[a];
             if (!isObj(au)) return false;
-            if (au.u !== undefined && !httpsOnly(au.u)) return false;
+            if (au.u !== undefined && !trustedUrl(au.u)) return false;
             if (au.f !== undefined && !safeF(au.f)) return false;
             if (au.by !== undefined && !isStr(au.by, 200)) return false;
           }
@@ -50,6 +58,7 @@
         for (var b = 0; b < d.books.length; b++) {
           var bk = d.books[b];
           if (!isObj(bk) || !/^[A-Za-z0-9_-]{1,80}$/.test(String(bk.id)) || !isStr(bk.title, 300)) return false;
+          if (bk.packBase !== undefined && !trustedUrl(bk.packBase)) return false;
           ["author", "desc", "source", "kind"].forEach(function (f) { if (bk[f] !== undefined && !isStr(bk[f], 3000)) bk.__bad = 1; });
           if (bk.__bad) return false;
           if (bk.volumes !== undefined) {
@@ -60,7 +69,19 @@
               if (vo.pages !== undefined && !(Number.isInteger(vo.pages) && vo.pages >= 0 && vo.pages <= 50000)) return false;
               if (vo.parts !== undefined) {
                 if (!Array.isArray(vo.parts) || vo.parts.length > 2000) return false;
-                for (var p = 0; p < vo.parts.length; p++) if (!isObj(vo.parts[p]) || !safeF(vo.parts[p].f)) return false;
+                for (var p = 0; p < vo.parts.length; p++) {
+                  var pt = vo.parts[p];
+                  if (!isObj(pt) || !safeF(pt.f)) return false;
+                  // sizes: مصفوفة أعداد صحيحة منطقية (حجم الصفحة ≤ 20MB، مجموع الجزء ≤ 300MB)
+                  if (!Array.isArray(pt.sizes) || pt.sizes.length < 1 || pt.sizes.length > 2000) return false;
+                  var sum = 0;
+                  for (var z = 0; z < pt.sizes.length; z++) {
+                    var sz = pt.sizes[z];
+                    if (!Number.isInteger(sz) || sz < 1 || sz > 20e6) return false;
+                    sum += sz;
+                  }
+                  if (sum > 300e6) return false;
+                }
               }
             }
           }
@@ -1548,7 +1569,7 @@
       it.audio.forEach(function (au) {
         var ab = el("button", "chip on", "🎧 استماع" + (au.by ? " — " + au.by : ""));
         ab.onclick = function () {
-          playerLoad({ src: (au.u ? httpsOnly(au.u) : (BASE + String(au.f || "").replace(/^[\/.]+/, ""))), title: it.title, artist: au.by || "تسجيل صوتي" });
+          playerLoad({ src: (au.u ? trustedUrl(au.u) : (BASE + String(au.f || "").replace(/^[\/.]+/, ""))), title: it.title, artist: au.by || "تسجيل صوتي" });
           var a = PL.a, tried = 0, url = a.src;
           a.onerror = function () {
             var code = a.error ? a.error.code : "?";
@@ -1941,12 +1962,17 @@
   }
   function getPart(book, part, add, undo) {
     var urls = [];
-    if (book.packBase) urls.push(book.packBase.replace(/\/?$/, "/") + part.f);
+    if (trustedUrl(book.packBase)) urls.push(book.packBase.replace(/\/?$/, "/") + part.f);
     urls.push(BASE + part.f);
     var P = window.Capacitor && window.Capacitor.Plugins || {};
     function viaFetch(u) {
       var mine = 0;
-      return fetch(u).then(function (r) {
+      // مهلة توقف: إذا ما وصلت بيانات 45 ثانية نقطع الاتصال بدل الانتظار للأبد
+      var ctrl = window.AbortController ? new AbortController() : null, st = null;
+      function kick() { if (!ctrl) return; clearTimeout(st); st = setTimeout(function () { ctrl.abort(); }, 45000); }
+      kick();
+      return fetch(u, ctrl ? { signal: ctrl.signal } : undefined).then(function (r) {
+        kick();
         if (!r.ok) throw new Error("http " + r.status);
         if (!r.body || !r.body.getReader) {
           return r.arrayBuffer().then(function (ab) { mine += ab.byteLength; add(ab.byteLength); return [new Blob([ab])]; });
@@ -1955,12 +1981,13 @@
         function pump() {
           return rd.read().then(function (x) {
             if (x.done) return chunks;
+            kick();
             chunks.push(x.value); mine += x.value.length; add(x.value.length);
             return pump();
           });
         }
         return pump();
-      }).catch(function (e) { undo(mine); throw e; });
+      }).then(function (c) { clearTimeout(st); return c; }, function (e) { clearTimeout(st); undo(mine); throw e; });
     }
     function viaNative(u) {
       if (!P.CapacitorHttp) return Promise.reject(new Error("no native"));
@@ -1986,6 +2013,7 @@
   function downloadVol(b, v, onProg) {
     var total = 0;
     v.parts.forEach(function (p) { p.sizes.forEach(function (n) { total += n; }); });
+    if (!(total > 0)) return Promise.reject(new Error("bad sizes"));
     var got = 0, pn = 0;
     function doPart(pi) {
       if (pi >= v.parts.length) return Promise.resolve();
@@ -2691,7 +2719,16 @@
     var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, manual ? 30000 : 15000);
     if (manual) toast("جاري التحديث…");
     fetch(REMOTE_URL + "?t=" + Date.now(), { cache: "no-store", signal: ctrl ? ctrl.signal : undefined })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        var cl = parseInt(r.headers.get("content-length") || "0", 10);
+        if (cl > 12e6) throw new Error("too big");
+        return r.text();
+      })
+      .then(function (txt) {
+        if (txt.length > 12e6) throw new Error("too big");   // حد أقصى قبل التحليل
+        return JSON.parse(txt);
+      })
       .then(function (d) {
         clearTimeout(timer);
         if (!validData(d)) { if (manual) toast("الملف غير صالح"); return; }
