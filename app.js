@@ -743,6 +743,21 @@
     else if (c.indexOf("seek:") === 0) a.currentTime = +c.slice(5);
   };
   function nativeHold(on) { try { if (window.NativeAudio && NativeAudio.hold) NativeAudio.hold(!!on); } catch (e) {} }
+  /* حفظ موضع الاستماع لكل تسجيل لاستئنافه لاحقاً */
+  var APOS_MAX = 60, aposLast = 0;
+  function aposAll() { try { var o = JSON.parse(localStorage.getItem("apos") || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; } catch (e) { return {}; } }
+  function aposSave(force) {
+    var a = PL.a; if (!a || !PL.rk || !a.getAttribute("src")) return;
+    var now = Date.now(); if (!force && now - aposLast < 4000) return; aposLast = now;
+    var t = a.currentTime, d = a.duration;
+    if (!isFinite(t) || t < 0) return;
+    try {
+      var o = aposAll();
+      if (t < 5 || (isFinite(d) && d - t < 10)) delete o[PL.rk]; else o[PL.rk] = { t: Math.floor(t), u: now };
+      var ks = Object.keys(o); if (ks.length > APOS_MAX) { ks.sort(function (x, y) { return (o[x].u || 0) - (o[y].u || 0); }); ks.slice(0, ks.length - APOS_MAX).forEach(function (k) { delete o[k]; }); }
+      localStorage.setItem("apos", JSON.stringify(o));
+    } catch (e) {}
+  }
   function ensurePlayer() {
     if (PL.a) return;
     var a = document.createElement("audio"); a.preload = "auto"; a.style.display = "none"; document.body.appendChild(a); PL.a = a;
@@ -752,14 +767,14 @@
     var prog = el("i", "gp-prog"); var pbox = el("span", "gp-pb"); pbox.appendChild(prog);
     var pp = el("button", "gp-b", "▶"), x = el("button", "gp-b gp-x", "✕");
     pp.onclick = function (e) { e.stopPropagation(); if (a.paused) a.play(); else a.pause(); };
-    x.onclick = function (e) { e.stopPropagation(); a.pause(); a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); nativeMedia(); closeNP(); };
+    x.onclick = function (e) { e.stopPropagation(); a.pause(); aposSave(true); PL.rk = null; a.removeAttribute("src"); a.load(); bar.hidden = true; nativeHold(false); nativeMedia(); closeNP(); };
     bar.onclick = function () { openNP(); };
     PL.pp = pp; PL.prog = prog;
-    a.ontimeupdate = function () { syncNP(); };
+    a.ontimeupdate = function () { syncNP(); aposSave(false); };
     a.onplay = function () { nativeHold(true); nativeMedia(); syncNP(); };
-    a.onpause = function () { nativeHold(false); nativeMedia(); syncNP(); };
-    a.onended = function () { nativeHold(false); if (PL.next) PL.next(); };
-    a.onloadedmetadata = function () { nativeMedia(); syncNP(); };
+    a.onpause = function () { aposSave(true); nativeHold(false); nativeMedia(); syncNP(); };
+    a.onended = function () { if (PL.rk) { try { var o = aposAll(); delete o[PL.rk]; localStorage.setItem("apos", JSON.stringify(o)); } catch (e) {} } PL.rk = null; nativeHold(false); if (PL.next) PL.next(); };
+    a.onloadedmetadata = function () { if (PL.resume > 5 && isFinite(a.duration) && a.duration - PL.resume > 10) { try { a.currentTime = PL.resume; } catch (e) {} } PL.resume = 0; nativeMedia(); syncNP(); };
     [thumb, PL.t, pp, x, pbox].forEach(function (b) { bar.appendChild(b); });
     document.body.appendChild(bar); PL.bar = bar;
   }
@@ -818,6 +833,9 @@
     ensurePlayer();
     var a = PL.a;
     a.onerror = null;
+    if (PL.rk && a.getAttribute("src")) aposSave(true);
+    PL.rk = o.rk || null; PL.resume = 0;
+    if (PL.rk && !o.fresh) { var sv = aposAll()[PL.rk]; if (sv && sv.t > 5) PL.resume = sv.t; }
     a.src = o.src; PL.title = o.title; PL.artist = o.artist; PL.t.textContent = o.title + " — " + o.artist; PL.bar.hidden = false; syncNP();
     PL.next = o.next; PL.prev = o.prev;
     var p = a.play(); if (p && p.catch) p.catch(function () { toast("تعذّر التشغيل، تحقق من الإنترنت"); });
@@ -843,7 +861,7 @@
       var src = blobUrl || (st.m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3");
       var rec = st.rec, m = st.m;
       playerLoad({
-        src: src, title: "سورة " + (SURAHS[n - 1] || n), artist: rec.name,
+        src: src, rk: "q:" + rec.id + ":" + m.id + ":" + n, title: "سورة " + (SURAHS[n - 1] || n), artist: rec.name,
         next: function () { var k = m.l.indexOf(n); if (k >= 0 && k + 1 < m.l.length) loadSurahOf(rec, m, m.l[k + 1]); },
         prev: function () { var k = m.l.indexOf(n); if (k > 0) loadSurahOf(rec, m, m.l[k - 1]); }
       });
@@ -852,7 +870,7 @@
       audGet(rec.id, m.id, n).then(function (bl) {
         var src = bl ? URL.createObjectURL(bl) : m.s.replace(/\/?$/, "/") + pad3(n) + ".mp3";
         playerLoad({
-          src: src, title: "سورة " + (SURAHS[n - 1] || n), artist: rec.name,
+          src: src, fresh: true, rk: "q:" + rec.id + ":" + m.id + ":" + n, title: "سورة " + (SURAHS[n - 1] || n), artist: rec.name,
           next: function () { var k = m.l.indexOf(n); if (k >= 0 && k + 1 < m.l.length) loadSurahOf(rec, m, m.l[k + 1]); },
           prev: function () { var k = m.l.indexOf(n); if (k > 0) loadSurahOf(rec, m, m.l[k - 1]); }
         });
@@ -1569,7 +1587,7 @@
       it.audio.forEach(function (au) {
         var ab = el("button", "chip on", "🎧 استماع" + (au.by ? " — " + au.by : ""));
         ab.onclick = function () {
-          playerLoad({ src: (au.u ? trustedUrl(au.u) : (BASE + String(au.f || "").replace(/^[\/.]+/, ""))), title: it.title, artist: au.by || "تسجيل صوتي" });
+          playerLoad({ src: (au.u ? trustedUrl(au.u) : (BASE + String(au.f || "").replace(/^[\/.]+/, ""))), rk: "d:" + String(it.id || it.title) + ":" + String(au.u || au.f || au.by || "").slice(0, 120), title: it.title, artist: au.by || "تسجيل صوتي" });
           var a = PL.a, tried = 0, url = a.src;
           a.onerror = function () {
             var code = a.error ? a.error.code : "?";
