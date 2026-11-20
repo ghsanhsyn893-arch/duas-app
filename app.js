@@ -1018,6 +1018,72 @@
     } catch (e) {}
     return "";
   }
+  function latListCache(id, list) {
+    try {
+      var o = JSON.parse(localStorage.getItem("latlist") || "{}");
+      if (!o || typeof o !== "object" || Array.isArray(o)) o = {};
+      if (!list) {
+        var c = o[id];
+        if (c && Array.isArray(c.items) && c.items.length) return c.items;
+        return null;
+      }
+      o[id] = { t: Date.now(), items: list };
+      var ks = Object.keys(o);
+      if (ks.length > 40) {
+        ks.sort(function (a, b) { return (o[a].t || 0) - (o[b].t || 0); });
+        ks.slice(0, ks.length - 40).forEach(function (k) { delete o[k]; });
+      }
+      localStorage.setItem("latlist", JSON.stringify(o));
+    } catch (e) {}
+    return null;
+  }
+  function latParseList(html, baseItems) {
+    var seen = {}, out = (baseItems || []).map(function (x) {
+      seen[x[0]] = 1;
+      return [x[0], x[1], x[2]];
+    });
+    var re = /index\.php\?file=(\d{1,7})([^"'<>\s]{0,120})/gi, m, added = 0;
+    var s = String(html || "").slice(0, 500000);
+    while ((m = re.exec(s)) && added < 300) {
+      var id = parseInt(m[1], 10);
+      if (!id || seen[id]) continue;
+      seen[id] = 1;
+      var ctx = s.slice(Math.max(0, m.index - 220), Math.min(s.length, m.index + 260))
+        .replace(/<[^>]+>/g, " ").replace(/&[^;]+;/g, " ").replace(/\s+/g, " ").trim();
+      var dm = /(\d{1,3})\s*(?:دقيقة|د\b|min)/i.exec(ctx);
+      var mins = dm ? Math.min(999, parseInt(dm[1], 10)) : 0;
+      var title = ctx.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
+      if (title.length > 90) title = title.slice(0, 90).replace(/\s+\S*$/, "") + "…";
+      out.push([id, title, mins]);
+      added++;
+    }
+    return { items: out, added: added };
+  }
+  function latFetchMore(r, curItems, force) {
+    if (!r || !r.id || r.id === "basem") return Promise.resolve({ items: curItems, added: 0 });
+    if (!force) {
+      var cached = latListCache(r.id);
+      if (cached && cached.length > curItems.length) {
+        return Promise.resolve({ items: cached, added: cached.length - curItems.length });
+      }
+    }
+    var urls = [
+      LAT_HOME + "index.php?radood=" + encodeURIComponent(r.id),
+      LAT_HOME + encodeURIComponent(r.id) + "/"
+    ];
+    function tryUrl(i) {
+      if (i >= urls.length) return Promise.resolve({ items: curItems, added: 0 });
+      return latHttpText(urls[i]).then(function (html) {
+        var parsed = latParseList(html, curItems);
+        if (parsed.added > 0) {
+          latListCache(r.id, parsed.items);
+          return parsed;
+        }
+        return tryUrl(i + 1);
+      }, function () { return tryUrl(i + 1); });
+    }
+    return tryUrl(0);
+  }
   function latResolve(r, it) {
     if (r.direct) return Promise.resolve(r.direct.base + (it[0] - r.direct.off) + ".mp3");
     var c = latCache(it[0]); if (c) return Promise.resolve(c);
@@ -1031,7 +1097,7 @@
     host = host || viewEl;
     var q = el("input", "search"); q.type = "search"; q.placeholder = "ابحث عن رادود أو لطمية...";
     var box = el("div"); host.appendChild(q); host.appendChild(box);
-    var st = { r: null };
+    var st = { r: null, dyn: {} };
     function playIt(r, list, i, fresh) {
       var it = list[i], tok = ++latTok;
       audGet("lat", r.id, it[0]).then(function (bl) {
@@ -1048,12 +1114,48 @@
         if (PL.a) PL.a.onerror = function () { toast("تعذّر تشغيل المقطع. قد يمنع الموقع التشغيل من التطبيق أو الإنترنت ضعيف."); };
       }, function () { if (tok === latTok) toast("تعذّر الوصول لرابط الصوت. تحقق من الإنترنت وجرّب مرة ثانية."); });
     }
+    function rItems(r) {
+      if (st.dyn[r.id]) return st.dyn[r.id];
+      var c = latListCache(r.id);
+      if (c && c.length >= r.items.length) { st.dyn[r.id] = c; return c; }
+      return r.items;
+    }
     function drawR(r) {
       box.textContent = "";
-      var back = el("button", "chip", "← الرواديد"); back.onclick = function () { st.r = null; draw(); }; box.appendChild(back);
-      box.appendChild(el("div", "fsec", r.n));
+      var allItems = rItems(r);
+      var back = el("button", "chip", "← الرواديد"); back.onclick = function () { st.r = null; draw(); };
+      var topRow = el("div", "reader-tools");
+      topRow.appendChild(back);
+      var syncBtn = null;
+      if (r.id !== "basem") {
+        syncBtn = el("button", "chip", "🔄 جلب المزيد من الموقع");
+        syncBtn.onclick = function () {
+          syncBtn.disabled = true; syncBtn.textContent = "جاري الجلب…";
+          latFetchMore(r, allItems, true).then(function (res) {
+            st.dyn[r.id] = res.items;
+            toast(res.added ? ("تمت إضافة " + res.added + " مقطع") : "لا توجد مقاطع إضافية متاحة حالياً");
+            drawR(r);
+          }, function () {
+            toast("تعذّر الجلب من الموقع");
+          }).then(function () {
+            if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = "🔄 جلب المزيد من الموقع"; }
+          });
+        };
+        topRow.appendChild(syncBtn);
+      }
+      box.appendChild(topRow);
+      box.appendChild(el("div", "fsec", r.n + " (" + allItems.length + ")"));
+      if (r.id !== "basem" && !st.dyn[r.id + "_auto"]) {
+        st.dyn[r.id + "_auto"] = 1;
+        latFetchMore(r, allItems, false).then(function (res) {
+          if (res.added > 0 && st.r && st.r.id === r.id) {
+            st.dyn[r.id] = res.items;
+            drawR(r);
+          }
+        }).catch(function () {});
+      }
       var t = norm(q.value.trim());
-      var list = r.items.filter(function (it) { return !t || norm(latName(it)).indexOf(t) !== -1; });
+      var list = allItems.filter(function (it) { return !t || norm(latName(it)).indexOf(t) !== -1; });
       var wrap = el("div", "list");
       list.forEach(function (it, i) {
         var row = el("div", "hf-row");
@@ -1120,11 +1222,12 @@
       if (st.r) { drawR(st.r); return; }
       box.textContent = "";
       var t = norm(q.value.trim());
-      var m = LAT.filter(function (r) { return !t || norm(r.n).indexOf(t) !== -1 || r.items.some(function (it) { return norm(latName(it)).indexOf(t) !== -1; }); });
+      var m = LAT.filter(function (r) { var arr = rItems(r); return !t || norm(r.n).indexOf(t) !== -1 || arr.some(function (it) { return norm(latName(it)).indexOf(t) !== -1; }); });
       if (!m.length) { box.appendChild(el("div", "empty", "ما لقينا نتيجة")); return; }
       var list = el("div", "list");
       m.forEach(function (r) {
-        var b = el("button", "row"); b.appendChild(el("span", null, r.n + " (" + r.items.length + ")")); b.appendChild(el("span", "chev", "‹"));
+        var cnt = rItems(r).length;
+        var b = el("button", "row"); b.appendChild(el("span", null, r.n + " (" + cnt + ")")); b.appendChild(el("span", "chev", "‹"));
         b.onclick = function () { st.r = r; drawR(r); };
         list.appendChild(b);
       });
