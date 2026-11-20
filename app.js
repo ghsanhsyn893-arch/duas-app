@@ -993,7 +993,7 @@
   function latHttpText(url) {
     var H = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
     if (H && H.get) {
-      return H.get({ url: url, responseType: "text" }).then(function (r) {
+      return H.get({ url: url, responseType: "text", headers: { "Referer": LAT_HOME } }).then(function (r) {
         if (!r || r.status < 200 || r.status >= 300) throw new Error("http " + (r && r.status));
         return typeof r.data === "string" ? r.data : "";
       });
@@ -1069,26 +1069,46 @@
           if (!confirm("تنزيل «" + latName(it) + "» (" + it[2] + " د)؟ يفضّل واي فاي.")) return;
           dl.disabled = true; dl.textContent = "…"; fill.style.width = "0%"; bar.hidden = false;
           var ctl = new AbortController(), stall = setTimeout(function () { ctl.abort(); }, 45000);
-          latResolve(r, it).then(function (u) { return fetch(httpsOnly(u), { signal: ctl.signal }); }).then(function (rs) {
-            if (!rs.ok) throw new Error("http " + rs.status);
-            var total = parseInt(rs.headers.get("content-length") || "0", 10), got = 0, chunks = [];
-            if (!rs.body || !rs.body.getReader) return rs.blob();
-            var rd = rs.body.getReader();
-            function pump() {
-              return rd.read().then(function (x) {
-                clearTimeout(stall); stall = setTimeout(function () { ctl.abort(); }, 45000);
-                if (x.done) { if (total && got !== total) throw new Error("incomplete"); return new Blob(chunks, { type: "audio/mpeg" }); }
-                chunks.push(x.value); got += x.value.length;
-                if (total) { var p = Math.min(100, Math.round(100 * got / total)); fill.style.width = p + "%"; dl.textContent = p + "%"; }
-                else dl.textContent = (got / 1048576).toFixed(1) + " MB";
-                return pump();
+          var H = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+
+          latResolve(r, it).then(function (u) {
+            var safeU = httpsOnly(u);
+            if (!safeU) throw new Error("bad url");
+            if (H && H.get) {
+              return H.get({
+                url: safeU,
+                responseType: "blob",
+                headers: { "Referer": LAT_HOME },
+                readTimeout: 120000,
+                connectTimeout: 30000
+              }).then(function (rs) {
+                if (!rs || rs.status < 200 || rs.status >= 300 || !rs.data) throw new Error("http " + (rs && rs.status));
+                return new Blob([b64Blob(rs.data)], { type: "audio/mpeg" });
               });
             }
-            return pump();
+            return fetch(safeU, { signal: ctl.signal }).then(function (rs) {
+              if (!rs.ok) throw new Error("http " + rs.status);
+              var total = parseInt(rs.headers.get("content-length") || "0", 10), got = 0, chunks = [];
+              if (!rs.body || !rs.body.getReader) return rs.blob();
+              var rd = rs.body.getReader();
+              function pump() {
+                return rd.read().then(function (x) {
+                  clearTimeout(stall); stall = setTimeout(function () { ctl.abort(); }, 45000);
+                  if (x.done) { if (total && got !== total) throw new Error("incomplete"); return new Blob(chunks, { type: "audio/mpeg" }); }
+                  chunks.push(x.value); got += x.value.length;
+                  if (total) { var p = Math.min(100, Math.round(100 * got / total)); fill.style.width = p + "%"; dl.textContent = p + "%"; }
+                  else dl.textContent = (got / 1048576).toFixed(1) + " MB";
+                  return pump();
+                });
+              }
+              return pump();
+            });
           }).then(function (bl) {
+            if (!bl || !bl.size) throw new Error("empty");
             return idbDo("readwrite", function (s) { return s.put(bl, audKey("lat", r.id, it[0])); });
-          }).then(function () { toast("تم التنزيل"); }, function () { toast("تعذّر التنزيل (قد لا يسمح الموقع به). يمكنك الاستماع مباشرة."); })
-            .then(function () { clearTimeout(stall); dl.disabled = false; bar.hidden = true; paint(); });
+          }).then(function () { toast("تم التنزيل"); }, function (e) {
+            toast("تعذّر التنزيل: " + (e && e.message ? e.message : "الموقع قد يمنع التحميل المباشر"));
+          }).then(function () { clearTimeout(stall); dl.disabled = false; bar.hidden = true; paint(); });
         }
         paint();
         [pl, mid, dl].forEach(function (x) { row.appendChild(x); }); wrap.appendChild(row);
