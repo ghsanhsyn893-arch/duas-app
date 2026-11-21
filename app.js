@@ -969,13 +969,21 @@
     var tab = v && v.rec ? "q" : (v && v.tab) || "";
     if (!tab) { try { tab = localStorage.getItem("listenTab") || "q"; } catch (e) { tab = "q"; } }
     if (tab !== "l") tab = "q";
-    var seg = el("div", "lseg");
+    var seg = el("div", "lseg"), ind = el("i", "lseg-i"); seg.appendChild(ind);
     var host = el("div");
     var bq = el("button", "", "القرآن"), bl = el("button", "", "لطميات");
     [bq, bl].forEach(function (b) { seg.appendChild(b); });
+    var cur = tab, sx = null, moved = false;
+    seg.addEventListener("pointerdown", function (e) { sx = e.clientX; moved = false; });
+    seg.addEventListener("pointermove", function (e) { if (sx !== null && Math.abs(e.clientX - sx) > 24) moved = true; });
+    seg.addEventListener("pointerup", function (e) {
+      if (sx !== null && moved) { var dx = e.clientX - sx; var t = dx < 0 ? "l" : "q"; if (t !== cur) show(t); }
+      sx = null;
+    });
+    seg.addEventListener("click", function (e) { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
     function show(t, vv) {
       try { localStorage.setItem("listenTab", t); } catch (e) {}
-      bq.className = t === "q" ? "on" : ""; bl.className = t === "l" ? "on" : "";
+      bq.className = t === "q" ? "on" : ""; bl.className = t === "l" ? "on" : ""; seg.setAttribute("data-t", t); cur = t;
       host.textContent = "";
       if (t === "l") renderLat(host); else renderListen(vv || { type: "listen" }, host);
     }

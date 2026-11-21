@@ -526,11 +526,15 @@ html[data-bg="1"] body::before{transform:translateZ(0);will-change:transform}
 .tform[hidden]{display:none}
 .flab{font-size:18px;font-weight:700;color:var(--ink);margin:16px 4px 6px}
 
-/* مبدّل القرآن / لطميات (كبسولة داكنة وزر أبيض متوهّج) */
-.lseg{display:flex;gap:0;margin:0 0 14px;padding:6px;border-radius:999px;direction:rtl;
+/* مبدّل القرآن / لطميات: كبسولة داكنة وزر أبيض متوهّج ينزلق بين الخيارين */
+.lseg{position:relative;display:flex;margin:0 0 14px;padding:6px;border-radius:999px;direction:rtl;touch-action:pan-y;user-select:none;-webkit-user-select:none;
   background:linear-gradient(180deg,#1b1a27,#0f0e17);border:1px solid rgba(255,255,255,.14);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 4px 14px rgba(20,10,60,.25)}
-.lseg button{flex:1;border:0;background:transparent;color:#9b98ab;font:inherit;font-size:19px;font-weight:700;
-  padding:13px 8px;border-radius:999px;cursor:pointer;transition:background .25s,color .25s,box-shadow .25s}
-.lseg button.on{background:#fff;color:#000;
-  box-shadow:0 0 0 1px rgba(255,255,255,.9),0 0 14px 3px rgba(255,255,255,.55),0 0 34px 10px rgba(110,90,255,.45)}
+.lseg-i{position:absolute;top:6px;bottom:6px;right:6px;width:calc(50% - 6px);border-radius:999px;background:#fff;pointer-events:none;
+  box-shadow:0 0 0 1px rgba(255,255,255,.9),0 0 14px 3px rgba(255,255,255,.55),0 0 34px 10px rgba(110,90,255,.45);
+  transition:transform .42s cubic-bezier(.34,1.35,.5,1)}
+.lseg[data-t="l"] .lseg-i{transform:translateX(-100%)}
+.lseg.drag .lseg-i{transition:none}
+.lseg button{position:relative;z-index:1;flex:1;border:0;background:transparent;color:#9b98ab;font:inherit;font-size:19px;font-weight:700;
+  padding:13px 8px;border-radius:999px;cursor:pointer;transition:color .3s}
+.lseg button.on{color:#000}
