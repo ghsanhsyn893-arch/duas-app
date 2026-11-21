@@ -969,13 +969,13 @@
     var tab = v && v.rec ? "q" : (v && v.tab) || "";
     if (!tab) { try { tab = localStorage.getItem("listenTab") || "q"; } catch (e) { tab = "q"; } }
     if (tab !== "l") tab = "q";
-    var seg = el("div"); seg.style.cssText = "display:flex;gap:8px;margin:0 0 12px";
+    var seg = el("div", "lseg");
     var host = el("div");
-    var bq = el("button", "chip", "📖 القرآن الكريم"), bl = el("button", "chip", "🎙 لطميات");
-    [bq, bl].forEach(function (b) { b.style.flex = "1"; seg.appendChild(b); });
+    var bq = el("button", "", "القرآن"), bl = el("button", "", "لطميات");
+    [bq, bl].forEach(function (b) { seg.appendChild(b); });
     function show(t, vv) {
       try { localStorage.setItem("listenTab", t); } catch (e) {}
-      bq.className = "chip" + (t === "q" ? " on" : ""); bl.className = "chip" + (t === "l" ? " on" : "");
+      bq.className = t === "q" ? "on" : ""; bl.className = t === "l" ? "on" : "";
       host.textContent = "";
       if (t === "l") renderLat(host); else renderListen(vv || { type: "listen" }, host);
     }
