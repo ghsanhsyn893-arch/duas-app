@@ -194,7 +194,8 @@ public class MainActivity extends BridgeActivity {
             String host = uri.getHost();
             return ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
                 && "localhost".equalsIgnoreCase(host)
-                && uri.getUserInfo() == null;
+                && uri.getEncodedAuthority() != null
+                && uri.getEncodedAuthority().indexOf('@') < 0;
         } catch (Exception e) { return false; }
     }
 
