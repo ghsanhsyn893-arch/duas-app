@@ -183,6 +183,22 @@ public class MainActivity extends BridgeActivity {
     private boolean hold = false;
     static final String ACT = "com.duas.app.MEDIA";
 
+    // لا نسمح للجسر الأصلي بالعمل إلا داخل أصل WebView المحلي الخاص بالتطبيق.
+    private boolean isTrustedAppOrigin() {
+        try {
+            if (getBridge() == null || getBridge().getWebView() == null) return false;
+            String current = getBridge().getWebView().getUrl();
+            if (current == null) return false;
+            android.net.Uri uri = android.net.Uri.parse(current);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            return ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
+                && "localhost".equalsIgnoreCase(host)
+                && uri.getEncodedAuthority() != null
+                && uri.getEncodedAuthority().indexOf('@') < 0;
+        } catch (Exception e) { return false; }
+    }
+
     private void js(final String cmd) {
         try {
             if (getBridge() == null || getBridge().getWebView() == null) return;
@@ -204,6 +220,8 @@ public class MainActivity extends BridgeActivity {
         try {
             BroadcastReceiver r = new BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
+                    // تجاهل أي بث لا يحمل package صريحاً موجهاً لهذا التطبيق.
+                    if (!getPackageName().equals(i.getPackage())) return;
                     String cmd = i.getStringExtra("c");
                     if (cmd != null) js(cmd);
                 }
@@ -216,24 +234,27 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().addJavascriptInterface(new Object() {
                 @JavascriptInterface
                 public void hold(boolean on) {
+                    if (!isTrustedAppOrigin()) return;
                     hold = on;
                     try {
+                        if (wl == null) return;
                         if (on && !wl.isHeld()) wl.acquire(6 * 60 * 60 * 1000L);
                         if (!on && wl.isHeld()) wl.release();
                     } catch (Exception e) { }
                 }
                 @JavascriptInterface
                 public void media(String title, String artist, boolean playing, int posSec, int durSec) {
+                    if (!isTrustedAppOrigin()) return;
                     try {
-                        // بدون عنوان = لا تشغيل: نوقف الخدمة فقط. لا نستدعي startForegroundService
-                        // لأنه يُسقط التطبيق إذا لم تنفّذ الخدمة startForeground خلال ثوانٍ.
                         if (title == null || title.length() == 0) {
                             stopService(new Intent(MainActivity.this, AudioService.class));
                             return;
                         }
+                        if (title.length() > 256 || artist == null || artist.length() > 128) return;
+                        if (posSec < 0 || durSec < 0 || posSec > 86400 || durSec > 86400) return;
                         Intent si = new Intent(MainActivity.this, AudioService.class);
-                        si.putExtra("title", title == null ? "" : title);
-                        si.putExtra("artist", artist == null ? "" : artist);
+                        si.putExtra("title", title);
+                        si.putExtra("artist", artist);
                         si.putExtra("playing", playing);
                         si.putExtra("pos", posSec * 1000L);
                         si.putExtra("dur", durSec * 1000L);
