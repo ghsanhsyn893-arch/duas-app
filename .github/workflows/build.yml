@@ -13,10 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      KS_B64: ${{ secrets.KS_B64 }}
-      KS_PASS: ${{ secrets.KS_PASS }}
-      KS_ALIAS: ${{ secrets.KS_ALIAS }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
